@@ -553,6 +553,25 @@ function publishSongs(body) {
 }
 
 // 主領提交第三首詩歌，並通知團長/管理員
+// ── LINE Messaging API ────────────────────────────────────────
+// Requires LINE_MESSAGING_TOKEN in Script Properties (Long-lived Channel Access Token).
+function sendLineMessage(lineUserId, text) {
+  if (!lineUserId) return { skipped: true, reason: 'no lineUserId' };
+  const token = PropertiesService.getScriptProperties().getProperty('LINE_MESSAGING_TOKEN');
+  if (!token) throw new Error('LINE_MESSAGING_TOKEN not set in Script Properties');
+  const resp = UrlFetchApp.fetch('https://api.line.me/v2/bot/message/push', {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { Authorization: 'Bearer ' + token },
+    payload: JSON.stringify({ to: lineUserId, messages: [{ type: 'text', text }] }),
+    muteHttpExceptions: true,
+  });
+  if (resp.getResponseCode() !== 200) {
+    throw new Error('LINE push failed: ' + resp.getContentText());
+  }
+  return { sent: true };
+}
+
 function submitLeaderSong(body) {
   const { weekId, songs } = body;
   const wid = String(weekId).trim();
@@ -565,16 +584,16 @@ function submitLeaderSong(body) {
 
   const members = getMembers();
   const recipients = members.filter(m => m.role === 'leader' || m.role === 'admin');
-  const emails = recipients.map(m => m.email).filter(e => e?.includes('@'));
   const week = getWeeks().find(w => w.id === wid);
-  const songList = (songs || []).map((s, i) => `${i+1}. ${s.name || '（未填）'}${s.youtube ? '\n   ' + s.youtube : ''}`).join('\n');
-  const msgBody = `主領已提交本週三首詩歌：\n\n${songList}\n\n請登入系統確認後發佈給服事團員。`;
-  // EMAIL_DISABLED
-  // emails.forEach(email => {
-  //   try { GmailApp.sendEmail(email, `【選歌通知】${week?.label || wid} 詩歌已提交`, msgBody); }
-  //   catch(e) { Logger.log('submitLeaderSong notify failed: ' + email + ' ' + e.message); }
-  // });
-  return { submitted: true, notified: 0 };
+  const songList = (songs || []).map((s, i) => `${i+1}. ${s.name || '（未填）'}`).join('\n');
+  const msg = `【選歌通知】${week?.label || wid}\n\n主領已提交本週三首詩歌：\n${songList}\n\n請登入系統確認後發佈。`;
+
+  let notified = 0;
+  recipients.forEach(m => {
+    try { sendLineMessage(m.lineUserId, msg); notified++; }
+    catch(e) { Logger.log('submitLeaderSong LINE notify failed: ' + m.name + ' ' + e.message); }
+  });
+  return { submitted: true, notified };
 }
 
 // 發提醒給主領（若第三首歌尚未提交）
@@ -591,15 +610,12 @@ function sendSongReminder(body) {
 
   const members = getMembers();
   const leader = members.find(m => m.id === leaderAssignment.memberId || m.name === leaderAssignment.memberName);
-  if (!leader?.email?.includes('@')) return { error: '主領沒有 email' };
+  if (!leader) return { error: '找不到主領成員資料' };
 
   const week = getWeeks().find(w => w.id === wid);
-  // EMAIL_DISABLED
-  // GmailApp.sendEmail(leader.email,
-  //   `【提醒】${week?.label || wid} 第三首詩歌尚未提交`,
-  //   `親愛的 ${leader.name}，\n\n提醒您 ${week?.label || wid} 的第三首詩歌尚未提交。\n請盡快登入系統完成選歌，讓團員有時間準備。\n\n敬拜團隊管理系統`
-  // );
-  return { sent: true, to: leader.email };
+  const msg = `【選歌提醒】${week?.label || wid}\n\n親愛的 ${leader.name}，\n\n提醒您本週第三首詩歌尚未提交，請盡快登入系統完成選歌，讓團員有時間準備。`;
+  sendLineMessage(leader.lineUserId, msg);
+  return { sent: true, to: leader.name };
 }
 
 // 每週四自動檢查：若主領尚未提交第三首歌則發提醒
