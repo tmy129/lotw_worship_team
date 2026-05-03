@@ -497,6 +497,54 @@ function createCalendarEvents(week, schedule, members) {
   return results;
 }
 
+// 測試用：以 5/9 為例，只發給 admin / leader
+function testSendScheduleCalendar() {
+  const allMembers = getMembers();
+  const adminLeaderEmails = new Set(
+    allMembers.filter(m => m.role === 'admin' || m.role === 'leader').map(m => m.email).filter(e => e?.includes('@'))
+  );
+
+  const wid = '2026-05-09';
+  const schedule = getSchedule(wid);
+
+  const serviceDate  = new Date(wid + 'T00:00:00');
+  const practiceDate = new Date(serviceDate);
+  practiceDate.setDate(serviceDate.getDate() - 2);
+
+  const practiceStart = new Date(practiceDate); practiceStart.setHours(19, 15, 0, 0);
+  const practiceEnd   = new Date(practiceDate); practiceEnd.setHours(21,  0, 0, 0);
+  const serviceStart  = new Date(serviceDate);  serviceStart.setHours( 9, 15, 0, 0);
+  const serviceEnd    = new Date(serviceDate);  serviceEnd.setHours(12,  0, 0, 0);
+
+  const location = '世界之光浸信會 https://maps.app.goo.gl/AHJVFPd6VxBp5yLGA';
+  const roster   = schedule.map(s => `  ${s.role}：${s.memberName}`).join('\n');
+  const guests   = [...adminLeaderEmails].join(',');
+
+  const calendar = CalendarApp.getDefaultCalendar();
+  const results  = [];
+
+  try {
+    const ev = calendar.createEvent('[測試] 敬拜團團練', practiceStart, practiceEnd, {
+      location,
+      description: `【測試】【週四練習】\n📅 ${wid}\n\n本週服事名單：\n${roster}`,
+      guests, sendInvites: true,
+    });
+    results.push({ type: 'practice', eventId: ev.getId() });
+  } catch(e) { results.push({ type: 'practice', error: e.message }); }
+
+  try {
+    const ev = calendar.createEvent('[測試] 主日聚會', serviceStart, serviceEnd, {
+      location,
+      description: `【測試】【週六主日聚會】\n📅 ${wid}\n\n本週服事名單：\n${roster}`,
+      guests, sendInvites: true,
+    });
+    results.push({ type: 'service', eventId: ev.getId() });
+  } catch(e) { results.push({ type: 'service', error: e.message }); }
+
+  Logger.log(JSON.stringify(results));
+  return results;
+}
+
 function sendScheduleCalendar(body) {
   const { weekId } = body;
   const wid = normalizeWeekId(String(weekId).trim());
