@@ -534,7 +534,29 @@ function saveSongs(body) {
 
 function publishSongs(body) {
   const { weekId } = body;
-  return { published: true, sentTo: 0 };
+  const wid = String(weekId).trim();
+  const songs = getSongs(wid);
+  const schedule = getSchedule(wid);
+  const members = getMembers();
+
+  const songList = songs.map((s, i) => {
+    const line = `${i + 1}. ${s.name || '（待定）'}`;
+    return s.youtube ? `${line}\n   ${s.youtube}` : line;
+  }).join('\n');
+
+  const week = getWeeks().find(w => w.id === wid);
+  const msg = `【詩歌公告】${week?.label || wid}\n\n本週詩歌如下：\n${songList}\n\n感謝你的服事！`;
+
+  const assignedIds = new Set(schedule.map(s => s.memberId).filter(Boolean));
+  const assignedNames = new Set(schedule.map(s => s.memberName).filter(Boolean));
+  const recipients = members.filter(m => assignedIds.has(m.id) || assignedNames.has(m.name));
+
+  let notified = 0;
+  recipients.forEach(m => {
+    try { sendLineMessage(m.lineUserId, msg); notified++; }
+    catch(e) { Logger.log('publishSongs LINE notify failed: ' + m.name + ' ' + e.message); }
+  });
+  return { published: true, sentTo: notified };
 }
 
 // 主領提交第三首詩歌，並通知團長/管理員
