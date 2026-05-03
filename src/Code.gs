@@ -534,21 +534,6 @@ function saveSongs(body) {
 
 function publishSongs(body) {
   const { weekId } = body;
-  const songs = getSongs(weekId);
-  const schedule = getSchedule(weekId);
-  const members = getMembers();
-  const assigned = schedule.map(s => members.find(m => m.id===s.memberId||m.name===s.memberName)).filter(Boolean);
-  const unique = [...new Map(assigned.map(m=>[m.id,m])).values()];
-  const emails = unique.map(m=>m.email).filter(e=>e?.includes('@'));
-  const songList = songs.map((s,i) => {
-    const line = `${i+1}. ${s.name||'（待定）'}`;
-    return s.youtube ? `${line}\n   ${s.youtube}` : line;
-  }).join('\n');
-  // EMAIL_DISABLED
-  // emails.forEach(email => {
-  //   try { GmailApp.sendEmail(email,'本週詩歌公告',`親愛的服事夥伴，\n\n本週詩歌如下：\n\n${songList}\n\n感謝你的服事！\n\n敬拜團隊管理系統`); }
-  //   catch(e){ Logger.log(`Failed: ${email}: ${e.message}`); }
-  // });
   return { published: true, sentTo: 0 };
 }
 
@@ -585,7 +570,10 @@ function submitLeaderSong(body) {
   const members = getMembers();
   const recipients = members.filter(m => m.role === 'leader' || m.role === 'admin');
   const week = getWeeks().find(w => w.id === wid);
-  const songList = (songs || []).map((s, i) => `${i+1}. ${s.name || '（未填）'}`).join('\n');
+  const songList = (songs || []).map((s, i) => {
+    const line = `${i+1}. ${s.name || '（未填）'}`;
+    return s.youtube ? `${line}\n   ${s.youtube}` : line;
+  }).join('\n');
   const msg = `【選歌通知】${week?.label || wid}\n\n主領已提交本週三首詩歌：\n${songList}\n\n請登入系統確認後發佈。`;
 
   let notified = 0;
@@ -658,21 +646,7 @@ function migrateAddYoutube() {
 
 function sendReminder(body) {
   const { weekId } = body;
-  const members = getMembers();
-  // 通知所有團長（role=leader）及管理員（role=admin）
-  const recipients = members.filter(m => m.role === 'leader' || m.role === 'admin');
-  if (!recipients.length) return { error: 'No leader/admin found' };
-  const week = getWeeks().find(w => w.id === weekId);
-  const emails = recipients.map(m => m.email).filter(e => e?.includes('@'));
-  // EMAIL_DISABLED
-  // emails.forEach(email => {
-  //   try {
-  //     GmailApp.sendEmail(email,
-  //       `【提醒】本週第三首詩歌尚未選定 — ${week?.label||''}`,
-  //       `您好，\n\n提醒本週（${week?.label}）的第三首詩歌尚未選定。\n請在週三前完成選歌，讓團員有時間準備。\n\n敬拜團隊管理系統`);
-  //   } catch(e) { Logger.log('sendReminder failed: ' + email + ' ' + e.message); }
-  // });
-  return { sent: true, to: emails };
+  return { sent: false, reason: 'use sendSongReminder instead' };
 }
 
 // ── LINE Login ────────────────────────────────────────────────
