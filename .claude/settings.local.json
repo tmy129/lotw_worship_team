@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(file /tmp/lotw*.js)",
+      "Bash(npm run *)"
+    ]
+  }
+}
