@@ -514,21 +514,32 @@ function parseDatetime(str) {
 }
 
 // ── Songs ─────────────────────────────────────────────────────
+function normalizeSongWeekId(cellVal) {
+  if (cellVal instanceof Date) return Utilities.formatDate(cellVal, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  return normalizeWeekId(String(cellVal).trim());
+}
+
 function getSongs(weekId) {
-  return sheetToObjects(SHEETS.SONGS)
-    .filter(s => s.weekId === weekId)
+  const wid = normalizeWeekId(String(weekId).trim());
+  return sheetToObjectsRaw(SHEETS.SONGS)
+    .filter(s => normalizeWeekId(s.weekId) === wid)
     .sort((a, b) => Number(a.slot) - Number(b.slot))
     .map(s => ({ ...s, youtube: s.youtube || '' }));
 }
 
-function saveSongs(body) {
-  const { weekId, songs } = body;
-  const sh = SS.getSheetByName(SHEETS.SONGS);
+function deleteSongRows(sh, wid) {
   const all = sh.getDataRange().getValues();
   for (let i = all.length - 1; i >= 1; i--) {
-    if (String(all[i][0]) === String(weekId)) sh.deleteRow(i + 1);
+    if (normalizeSongWeekId(all[i][0]) === wid) sh.deleteRow(i + 1);
   }
-  songs.forEach((s, idx) => sh.appendRow([weekId, idx+1, s.name||'', s.confirmed||false, s.youtube||'']));
+}
+
+function saveSongs(body) {
+  const { weekId, songs } = body;
+  const wid = normalizeWeekId(String(weekId).trim());
+  const sh = SS.getSheetByName(SHEETS.SONGS);
+  deleteSongRows(sh, wid);
+  songs.forEach((s, idx) => sh.appendRow([wid, idx+1, s.name||'', s.confirmed||false, s.youtube||'']));
   return { saved: true };
 }
 
@@ -581,12 +592,9 @@ function sendLineMessage(lineUserId, text) {
 
 function submitLeaderSong(body) {
   const { weekId, songs } = body;
-  const wid = String(weekId).trim();
+  const wid = normalizeWeekId(String(weekId).trim());
   const sh = SS.getSheetByName(SHEETS.SONGS);
-  const all = sh.getDataRange().getDisplayValues();
-  for (let i = all.length - 1; i >= 1; i--) {
-    if (all[i][0].trim() === wid) sh.deleteRow(i + 1);
-  }
+  deleteSongRows(sh, wid);
   (songs || []).forEach((s, idx) => sh.appendRow([wid, idx + 1, s.name || '', false, s.youtube || '']));
 
   const members = getMembers();
