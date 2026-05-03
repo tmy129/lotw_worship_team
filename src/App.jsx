@@ -1977,24 +1977,22 @@ function ScheduleGridCard({ weekRows, scheduleByWeek, allMembers, canEdit, onUpd
           </button>
         </div>
       </div>
+      {onSendCalendar && (
+        <div style={{ padding:"8px 16px 10px", borderBottom:"1px solid var(--border-lt)", display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+          <span style={{ fontSize:11, fontWeight:600, color:"var(--text-3)", flexShrink:0 }}>📅 行事曆邀請</span>
+          {weekRows.map(({ week }) => (
+            <button key={week.id} className="btn btn-sm btn-ghost btn-pill"
+              onClick={() => onSendCalendar(week.id)}>
+              {week.label.slice(5).replace("-","/")}
+            </button>
+          ))}
+        </div>
+      )}
       <div style={{ overflowX:"auto" }}>
         <ScheduleGrid weekRows={weekRows} scheduleByWeek={scheduleByWeek}
           allMembers={allMembers} canEdit={canEdit} onUpdate={onUpdate}
           onUpdatePrePractice={onUpdatePrePractice} />
       </div>
-      {onSendCalendar && (
-        <div style={{ padding:"10px 16px 12px", borderTop:"1px solid var(--border-lt)" }}>
-          <div style={{ fontSize:11, fontWeight:600, color:"var(--text-3)", marginBottom:8 }}>發送 Google 行事曆邀請</div>
-          <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
-            {weekRows.map(({ week }) => (
-              <button key={week.id} className="btn btn-sm btn-ghost btn-pill"
-                onClick={() => onSendCalendar(week.id)}>
-                📅 {week.label.slice(5).replace("-","/")}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
