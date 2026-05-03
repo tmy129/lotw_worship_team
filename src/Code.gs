@@ -27,7 +27,8 @@ function doPost(e) {
       case "deleteVoteSetting":  return ok(deleteVoteSetting(payload.id));
       case "castVote":           return ok(castVote(payload));
       case "saveSchedule":       return ok(saveSchedule(payload));
-      case "confirmSchedule":    return ok(confirmSchedule(payload));
+      case "confirmSchedule":       return ok(confirmSchedule(payload));
+      case "sendScheduleCalendar": return ok(sendScheduleCalendar(payload));
       case "saveSongs":          return ok(saveSongs(payload));
       case "publishSongs":       return ok(publishSongs(payload));
       case "submitLeaderSong":   return ok(submitLeaderSong(payload));
@@ -79,6 +80,7 @@ function route(e) {
     getPrePracticeHistory:  () => getPrePracticeHistory(),
     saveSchedule:           () => saveSchedule(body),
     confirmSchedule:        () => confirmSchedule(body),
+    sendScheduleCalendar:   () => sendScheduleCalendar(body),
     getSongs:          () => getSongs(params.weekId),
     saveSongs:         () => saveSongs(body),
     publishSongs:      () => publishSongs(body),
@@ -493,6 +495,70 @@ function createCalendarEvents(week, schedule, members) {
     } catch (e) { results.push({ type, error: e.message }); }
   });
   return results;
+}
+
+function sendScheduleCalendar(body) {
+  const { weekId } = body;
+  const wid = normalizeWeekId(String(weekId).trim());
+  const schedule = getSchedule(wid);
+  const members  = getMembers();
+
+  // weekId is Saturday; Thursday is 2 days earlier
+  const serviceDate  = new Date(wid + 'T00:00:00');
+  const practiceDate = new Date(serviceDate);
+  practiceDate.setDate(serviceDate.getDate() - 2);
+
+  const practiceStart = new Date(practiceDate); practiceStart.setHours(19, 15, 0, 0);
+  const practiceEnd   = new Date(practiceDate); practiceEnd.setHours(21,  0, 0, 0);
+  const serviceStart  = new Date(serviceDate);  serviceStart.setHours( 9, 15, 0, 0);
+  const serviceEnd    = new Date(serviceDate);  serviceEnd.setHours(12,  0, 0, 0);
+
+  const location = '世界之光浸信會 https://maps.app.goo.gl/AHJVFPd6VxBp5yLGA';
+  const roster   = schedule.map(s => `  ${s.role}：${s.memberName}`).join('\n');
+
+  // Build member → roles map for this week
+  const memberRoles = new Map();
+  schedule.forEach(s => {
+    const m = members.find(m => m.id === s.memberId || m.name === s.memberName);
+    if (!m) return;
+    if (!memberRoles.has(m.id)) memberRoles.set(m.id, { m, roles: [] });
+    memberRoles.get(m.id).roles.push(s.role);
+  });
+  const allServing = [...memberRoles.values()];
+
+  // Practice: exclude members whose ONLY role is PPT
+  const practiceEmails = allServing
+    .filter(({ roles }) => !roles.every(r => r === 'PPT'))
+    .map(({ m }) => m.email).filter(e => e?.includes('@'));
+
+  // Service: all serving members including PPT
+  const serviceEmails = allServing
+    .map(({ m }) => m.email).filter(e => e?.includes('@'));
+
+  const calendar = CalendarApp.getDefaultCalendar();
+  const results  = [];
+
+  try {
+    const ev = calendar.createEvent('敬拜團團練', practiceStart, practiceEnd, {
+      location,
+      description: `【週四練習】\n📅 ${wid}\n\n本週服事名單：\n${roster}\n\n請準時出席，若有狀況請提前告知。`,
+      guests: practiceEmails.join(','),
+      sendInvites: true,
+    });
+    results.push({ type: 'practice', eventId: ev.getId(), guests: practiceEmails.length });
+  } catch(e) { results.push({ type: 'practice', error: e.message }); }
+
+  try {
+    const ev = calendar.createEvent('主日聚會', serviceStart, serviceEnd, {
+      location,
+      description: `【週六主日聚會】\n📅 ${wid}\n\n本週服事名單：\n${roster}\n\n請提前30分鐘到場準備，感謝你的服事！`,
+      guests: serviceEmails.join(','),
+      sendInvites: true,
+    });
+    results.push({ type: 'service', eventId: ev.getId(), guests: serviceEmails.length });
+  } catch(e) { results.push({ type: 'service', error: e.message }); }
+
+  return { sent: true, weekId: wid, results };
 }
 
 function buildEventDescription(week, schedule, type) {

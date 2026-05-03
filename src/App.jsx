@@ -1647,6 +1647,15 @@ function ScheduleView({ weeks, members, voteSettings, currentUser, showToast, ap
     setDirtyWeeks(d => new Set([...d, weekId]));
   };
 
+  const sendCalendar = async (weekId) => {
+    try {
+      showToast("發送行事曆中…");
+      const res = await api("sendScheduleCalendar", {}, { weekId });
+      const ok = res.results?.filter(r => !r.error).length || 0;
+      showToast(`行事曆已發送！建立 ${ok} 個活動`);
+    } catch(e) { showToast("發送失敗：" + e.message, "error"); }
+  };
+
   const saveChanges = async () => {
     setSaving(true);
     try {
@@ -1730,6 +1739,7 @@ function ScheduleView({ weeks, members, voteSettings, currentUser, showToast, ap
               allMembers={allMembers} canEdit={canEdit} onUpdate={updateCell}
               onUpdatePrePractice={updatePrePractice}
               dirtyWeeks={dirtyWeeks} saving={saving} onSave={saveChanges}
+              onSendCalendar={sendCalendar}
               monthLabel={batchSetting.months.map(m => MONTH_NAMES[m]).join("、")} />
           )}
         </>
@@ -1751,7 +1761,7 @@ function ScheduleView({ weeks, members, voteSettings, currentUser, showToast, ap
   );
 }
 
-function ScheduleGridCard({ weekRows, scheduleByWeek, allMembers, canEdit, onUpdate, onUpdatePrePractice, dirtyWeeks, saving, onSave, monthLabel }) {
+function ScheduleGridCard({ weekRows, scheduleByWeek, allMembers, canEdit, onUpdate, onUpdatePrePractice, dirtyWeeks, saving, onSave, onSendCalendar, monthLabel }) {
   const [downloading, setDownloading] = useState(false);
 
   const downloadPng = async () => {
@@ -1972,6 +1982,19 @@ function ScheduleGridCard({ weekRows, scheduleByWeek, allMembers, canEdit, onUpd
           allMembers={allMembers} canEdit={canEdit} onUpdate={onUpdate}
           onUpdatePrePractice={onUpdatePrePractice} />
       </div>
+      {onSendCalendar && (
+        <div style={{ padding:"10px 16px 12px", borderTop:"1px solid var(--border-lt)" }}>
+          <div style={{ fontSize:11, fontWeight:600, color:"var(--text-3)", marginBottom:8 }}>發送 Google 行事曆邀請</div>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+            {weekRows.map(({ week }) => (
+              <button key={week.id} className="btn btn-sm btn-ghost btn-pill"
+                onClick={() => onSendCalendar(week.id)}>
+                📅 {week.label.slice(5).replace("-","/")}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
