@@ -516,7 +516,7 @@ function testSendScheduleCalendar() {
   const serviceStart  = new Date(serviceDate);  serviceStart.setHours( 9, 15, 0, 0);
   const serviceEnd    = new Date(serviceDate);  serviceEnd.setHours(12,  0, 0, 0);
 
-  const location = '世界之光浸信會 https://maps.app.goo.gl/AHJVFPd6VxBp5yLGA';
+  const location = '世界之光浸信會，10491臺北市中山區中山北路一段121巷32號';
   const roster   = schedule.map(s => `  ${s.role}：${s.memberName}`).join('\n');
   const guests   = [...adminLeaderEmails].join(',');
 
@@ -561,7 +561,7 @@ function sendScheduleCalendar(body) {
   const serviceStart  = new Date(serviceDate);  serviceStart.setHours( 9, 15, 0, 0);
   const serviceEnd    = new Date(serviceDate);  serviceEnd.setHours(12,  0, 0, 0);
 
-  const location = '世界之光浸信會 https://maps.app.goo.gl/AHJVFPd6VxBp5yLGA';
+  const location = '世界之光浸信會，10491臺北市中山區中山北路一段121巷32號';
   const roster   = schedule.map(s => `  ${s.role}：${s.memberName}`).join('\n');
 
   // Build member → roles map for this week
