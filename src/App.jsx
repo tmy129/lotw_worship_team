@@ -1,7 +1,35 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import "./App.css";
 
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyWlKVaIeSiFsA1kGORQvdN0DYSbRHruzQSXD_JQ3ySy0CA_UdHv0hEl8FljPibwOSb1g/exec";
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyfbKFd5UzQkZbquVZK4VfXmoYLZF55IJ9XKEjQregbGjsv3L9hq43lmDVpqfWsb1VmQw/exec";
+
+const LINE_CHANNEL_ID   = "2009964527"; // 填入你的 LINE Channel ID
+const LINE_REDIRECT_URI = "https://tmy129.github.io/lotw_worship_team/";
+
+function generateVerifier() {
+  const arr = new Uint8Array(32);
+  crypto.getRandomValues(arr);
+  return btoa(String.fromCharCode(...arr)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+}
+async function generateChallenge(verifier) {
+  const data = new TextEncoder().encode(verifier);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return btoa(String.fromCharCode(...new Uint8Array(digest))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+}
+async function startLineLogin() {
+  const verifier  = generateVerifier();
+  const challenge = await generateChallenge(verifier);
+  const state     = generateVerifier().slice(0, 16);
+  sessionStorage.setItem('line_verifier', verifier);
+  sessionStorage.setItem('line_state',    state);
+  const qs = new URLSearchParams({
+    response_type: 'code', client_id: LINE_CHANNEL_ID,
+    redirect_uri: LINE_REDIRECT_URI, state,
+    scope: 'profile openid',
+    code_challenge: challenge, code_challenge_method: 'S256',
+  });
+  window.location.href = `https://access.line.me/oauth2/v2.1/authorize?${qs}`;
+}
 
 async function api(action, params = {}, body = null) {
   if (body !== null) {
@@ -595,12 +623,36 @@ export default function App() {
   const [loading, setLoading]           = useState(false);
   const [toast, setToast]               = useState(null);
   const [aiDraft, setAiDraft]           = useState(null); // { settingId, setting, results: [{week,assignments}] }
+  const [linePending, setLinePending]   = useState(null); // { lineUserId, displayName, pictureUrl } — first-time bind
+  const [lineLoading, setLineLoading]   = useState(false);
 
   const week = weeks[weekIdx];
 
   const showToast = useCallback((msg, type="success") => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 3500);
+  }, []);
+
+  // Handle LINE OAuth callback
+  useEffect(() => {
+    const params  = new URLSearchParams(window.location.search);
+    const code    = params.get('code');
+    const state   = params.get('state');
+    if (!code) return;
+    window.history.replaceState({}, '', window.location.pathname);
+    const storedState = sessionStorage.getItem('line_state');
+    const verifier    = sessionStorage.getItem('line_verifier');
+    sessionStorage.removeItem('line_state');
+    sessionStorage.removeItem('line_verifier');
+    if (state !== storedState) { showToast('驗證失敗，請重試', 'error'); return; }
+    setLineLoading(true);
+    api("loginWithLine", { code, code_verifier: verifier, redirect_uri: LINE_REDIRECT_URI })
+      .then(res => {
+        if (res.member) { setCurrentUser(res.member); setView("mySchedule"); }
+        else setLinePending({ lineUserId: res.lineUserId, displayName: res.displayName, pictureUrl: res.pictureUrl });
+      })
+      .catch(e => showToast('LINE 登入失敗：' + e.message, 'error'))
+      .finally(() => setLineLoading(false));
   }, []);
 
   useEffect(() => {
@@ -641,6 +693,33 @@ export default function App() {
     });
     return () => { cancelled = true; };
   }, [week]);
+
+  if (lineLoading) {
+    return (
+      <div className="shell" style={{ display:"flex", alignItems:"center", justifyContent:"center", height:"100dvh" }}>
+        <div style={{ textAlign:"center", color:"var(--c-muted)" }}>
+          <div style={{ fontSize:32, marginBottom:12 }}>LINE 登入中…</div>
+          <div style={{ fontSize:14 }}>請稍候</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (linePending) {
+    return (
+      <div className="shell">
+        <LineBindScreen
+          linePending={linePending}
+          onBind={(member) => {
+            api("bindLineUser", {}, { memberId: member.id, lineUserId: linePending.lineUserId })
+              .then(res => { setLinePending(null); setCurrentUser(res.member || member); setView("mySchedule"); })
+              .catch(e => showToast('綁定失敗：' + e.message, 'error'));
+          }}
+          onCancel={() => setLinePending(null)}
+        />
+      </div>
+    );
+  }
 
   if (!currentUser) {
     return (
@@ -698,9 +777,10 @@ export default function App() {
 
 // ── Login ─────────────────────────────────────────────────────
 function LoginScreen({ members, onLogin, onFetchMembers }) {
-  const [selected, setSelected] = useState("");
-  const [fetched, setFetched]   = useState(false);
-  const [loading, setLoading]   = useState(false);
+  const [showFallback, setShowFallback] = useState(false);
+  const [selected, setSelected]         = useState("");
+  const [fetched, setFetched]           = useState(false);
+  const [loading, setLoading]           = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -716,23 +796,83 @@ function LoginScreen({ members, onLogin, onFetchMembers }) {
       <div className="login-church-en">LOTW WORSHIP TEAM</div>
       <div className="login-card">
         <div className="login-h">歡迎回來</div>
-        <div className="login-sh">請選擇你的帳號登入</div>
-        {!fetched ? (
-          <button className="btn btn-navy btn-full btn-pill" onClick={load} disabled={loading}>
-            {loading ? "載入中..." : "載入團員名單"}
+        <div className="login-sh">使用 LINE 帳號登入</div>
+
+        <button className="btn btn-full btn-pill" style={{ background:"#06C755", color:"#fff", fontWeight:600, fontSize:16, display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}
+          onClick={startLineLogin}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="white"><path d="M19.365 9.863c.349 0 .63.285.63.631 0 .345-.281.63-.63.63H17.61v1.125h1.755c.349 0 .63.283.63.63 0 .344-.281.629-.63.629h-2.386c-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63h2.386c.349 0 .63.285.63.63 0 .349-.281.63-.63.63H17.61v1.125h1.755zm-3.855 3.016c0 .27-.174.51-.432.596-.064.021-.133.031-.199.031-.211 0-.391-.09-.51-.25l-2.443-3.317v2.94c0 .344-.279.629-.631.629-.346 0-.626-.285-.626-.629V8.108c0-.27.173-.51.43-.595.06-.023.136-.033.194-.033.195 0 .375.104.495.254l2.462 3.33V8.108c0-.345.282-.63.63-.63.345 0 .63.285.63.63v4.771zm-5.741 0c0 .344-.282.629-.631.629-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63.349 0 .631.285.631.63v4.771zm-2.466.629H4.917c-.345 0-.63-.285-.63-.629V8.108c0-.345.285-.63.63-.63.348 0 .63.285.63.63v4.141h1.756c.348 0 .629.283.629.63 0 .344-.281.629-.629.629M24 10.314C24 4.943 18.615.572 12 .572S0 4.943 0 10.314c0 4.811 4.27 8.842 10.035 9.608.391.082.923.258 1.058.59.12.301.079.766.038 1.08l-.164 1.02c-.045.301-.24 1.186 1.049.645 1.291-.539 6.916-4.070 9.436-6.975C23.176 14.393 24 12.458 24 10.314"/></svg>
+          使用 LINE 登入
+        </button>
+
+        {!showFallback ? (
+          <button className="btn btn-ghost btn-full btn-pill" style={{ marginTop:8, fontSize:13 }}
+            onClick={() => { setShowFallback(true); load(); }}>
+            管理員備用登入
           </button>
         ) : (
           <>
+            {!fetched ? (
+              <div style={{ textAlign:"center", color:"var(--c-muted)", fontSize:13, marginTop:12 }}>載入中…</div>
+            ) : (
+              <>
+                <div className="fgrp" style={{ marginTop:12 }}>
+                  <label className="lbl">選擇成員</label>
+                  <select className="sel" value={selected} onChange={e => setSelected(e.target.value)}>
+                    <option value="">-- 請選擇 --</option>
+                    {members.map(m => <option key={m.id} value={m.id}>{m.name}（{ROLES_MAP[m.role]?.label}）</option>)}
+                  </select>
+                </div>
+                <button className="btn btn-navy btn-full btn-pill" disabled={!selected}
+                  onClick={() => { const m = members.find(x=>x.id===selected); if(m) onLogin(m); }}>
+                  登入
+                </button>
+              </>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── LINE Bind (first-time) ────────────────────────────────────
+function LineBindScreen({ linePending, onBind, onCancel }) {
+  const [members, setMembers] = useState([]);
+  const [selected, setSelected] = useState("");
+
+  useEffect(() => {
+    api("getMembers").then(setMembers).catch(() => {});
+  }, []);
+
+  return (
+    <div className="login-bg">
+      <div className="login-glow">♪</div>
+      <div className="login-church">世界之光敬拜團</div>
+      <div className="login-church-en">LOTW WORSHIP TEAM</div>
+      <div className="login-card">
+        {linePending.pictureUrl && (
+          <img src={linePending.pictureUrl} alt="" style={{ width:60, height:60, borderRadius:"50%", margin:"0 auto 12px", display:"block" }} />
+        )}
+        <div className="login-h" style={{ fontSize:18 }}>嗨，{linePending.displayName}！</div>
+        <div className="login-sh">第一次登入，請選擇你的團員帳號</div>
+        <div className="login-sh" style={{ fontSize:12, color:"var(--c-muted)", marginBottom:16 }}>之後 LINE 帳號將自動對應</div>
+        {members.length === 0 ? (
+          <div style={{ textAlign:"center", color:"var(--c-muted)" }}>載入中…</div>
+        ) : (
+          <>
             <div className="fgrp">
-              <label className="lbl">選擇成員</label>
+              <label className="lbl">我是</label>
               <select className="sel" value={selected} onChange={e => setSelected(e.target.value)}>
                 <option value="">-- 請選擇 --</option>
                 {members.map(m => <option key={m.id} value={m.id}>{m.name}（{ROLES_MAP[m.role]?.label}）</option>)}
               </select>
             </div>
             <button className="btn btn-navy btn-full btn-pill" disabled={!selected}
-              onClick={() => { const m = members.find(x=>x.id===selected); if(m) onLogin(m); }}>
-              登入
+              onClick={() => { const m = members.find(x=>x.id===selected); if(m) onBind(m); }}>
+              確認綁定
+            </button>
+            <button className="btn btn-ghost btn-full btn-pill" style={{ marginTop:8 }} onClick={onCancel}>
+              取消
             </button>
           </>
         )}

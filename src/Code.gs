@@ -34,6 +34,7 @@ function doPost(e) {
       case "sendSongReminder":   return ok(sendSongReminder(payload));
       case "sendReminder":       return ok(sendReminder(payload));
       case "runAISchedule":      return ok(handleRunAISchedule(payload));
+      case "bindLineUser":       return ok(bindLineUser(payload));
       default:                   return err("Unknown action: " + action);
     }
   } catch (e) {
@@ -84,6 +85,8 @@ function route(e) {
     submitLeaderSong:  () => submitLeaderSong(body),
     sendSongReminder:  () => sendSongReminder(body),
     sendReminder:      () => sendReminder(body),
+    loginWithLine:     () => loginWithLine(params),
+    bindLineUser:      () => bindLineUser(body),
   };
 
   try {
@@ -104,7 +107,7 @@ function json(obj) {
 // ── 初始化 ───────────────────────────────────────────────────
 function initSheets() {
   const defs = {
-    Members:      ['id','name','role','instruments','email','constraints','avColor','initials','active','canPPT'],
+    Members:      ['id','name','role','instruments','email','constraints','avColor','initials','active','canPPT','lineUserId'],
     Weeks:        ['id','label','practiceTime','serviceTime','status'],
     Votes:        ['weekId','memberId','vote','updatedAt'],
     Schedule:     ['weekId','role','memberId','memberName','updatedAt','confirmedAt'],
@@ -654,6 +657,69 @@ function sendReminder(body) {
   //   } catch(e) { Logger.log('sendReminder failed: ' + email + ' ' + e.message); }
   // });
   return { sent: true, to: emails };
+}
+
+// ── LINE Login ────────────────────────────────────────────────
+// Requires LINE_CHANNEL_ID and LINE_CHANNEL_SECRET in Script Properties.
+function loginWithLine(params) {
+  const { code, code_verifier, redirect_uri } = params;
+  const props = PropertiesService.getScriptProperties();
+  const channelId     = props.getProperty('LINE_CHANNEL_ID');
+  const channelSecret = props.getProperty('LINE_CHANNEL_SECRET');
+  if (!channelId || !channelSecret) throw new Error('LINE channel not configured');
+
+  const tokenResp = UrlFetchApp.fetch('https://api.line.me/oauth2/v2.1/token', {
+    method: 'post',
+    contentType: 'application/x-www-form-urlencoded',
+    payload: {
+      grant_type:    'authorization_code',
+      code,
+      redirect_uri,
+      client_id:     channelId,
+      client_secret: channelSecret,
+      code_verifier,
+    },
+    muteHttpExceptions: true,
+  });
+  const tokenData = JSON.parse(tokenResp.getContentText());
+  if (tokenData.error) throw new Error(tokenData.error_description || tokenData.error);
+
+  const profileResp = UrlFetchApp.fetch('https://api.line.me/v2/profile', {
+    headers: { Authorization: 'Bearer ' + tokenData.access_token },
+    muteHttpExceptions: true,
+  });
+  const profile = JSON.parse(profileResp.getContentText());
+  if (!profile.userId) throw new Error('LINE profile fetch failed');
+
+  const members = getMembers();
+  const member = members.find(m => m.lineUserId === profile.userId) || null;
+  return { lineUserId: profile.userId, displayName: profile.displayName, pictureUrl: profile.pictureUrl, member };
+}
+
+function bindLineUser(body) {
+  const { memberId, lineUserId } = body;
+  const sh = SS.getSheetByName(SHEETS.MEMBERS);
+  const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  let lineCol = headers.indexOf('lineUserId') + 1;
+  if (!lineCol) {
+    lineCol = headers.length + 1;
+    sh.getRange(1, lineCol).setValue('lineUserId');
+  }
+  const found = findRowById(SHEETS.MEMBERS, memberId);
+  if (!found) throw new Error('Member not found');
+  sh.getRange(found.rowIdx, lineCol).setValue(lineUserId);
+  const members = getMembers();
+  return { bound: true, member: members.find(m => m.id === memberId) || null };
+}
+
+// Run once in Apps Script editor to add lineUserId column to existing Members sheet.
+function migrateAddLineUserId() {
+  const sh = SS.getSheetByName(SHEETS.MEMBERS);
+  if (!sh) return 'Members sheet not found';
+  const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  if (headers.includes('lineUserId')) return 'Already has lineUserId column';
+  sh.getRange(1, headers.length + 1).setValue('lineUserId');
+  return 'Added lineUserId column at column ' + (headers.length + 1);
 }
 
 function handleRunAISchedule(payload) {
