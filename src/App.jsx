@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import "./App.css";
 
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwcVqaKwv5rBdxVDqw5zYU4pgz1TjxXqfE8ybJhK4XtE1ihCJozyjhzoCTc_zpKnpRe/exec";
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwer9-TSZ0JLAHHz2v20j_-F9j-a7808TR54hvWFQui2nKQ9kkDQZ3TLd0SoMBKwblQ/exec";
 
 const LINE_CHANNEL_ID   = "2009964527"; // 填入你的 LINE Channel ID
 const LINE_REDIRECT_URI = "https://tmy129.github.io/lotw_worship_team/";
@@ -2315,7 +2315,14 @@ function MyScheduleView({ member, weeks, api, showToast }) {
     } finally { setSubmitting(false); }
   };
 
-  const renderWeekCard = (w) => {
+  const ytLink = (url) => url ? (
+    <a href={url} target="_blank" rel="noreferrer"
+       style={{ fontSize:10, background:"#FF0000", color:"#fff", borderRadius:3, padding:"2px 7px", textDecoration:"none", fontWeight:700, flexShrink:0 }}>
+      YouTube
+    </a>
+  ) : null;
+
+  const renderWeekCard = (w, isPast = false) => {
     const roles    = upcomingMap[w.id] || [];
     const isServing = roles.length > 0;
     const isLeader  = roles.includes("主領");
@@ -2331,10 +2338,10 @@ function MyScheduleView({ member, weeks, api, showToast }) {
     const fullDate = dm ? `${dm[1]}年${parseInt(dm[2])}月${parseInt(dm[3])}日` : w.id;
 
     return (
-      <div key={w.id} style={{ margin:"0 16px 12px", borderRadius:"var(--r-lg)", overflow:"hidden", boxShadow:"var(--sh-md)" }}>
-        <div className="msc-hd" style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+      <div key={w.id} style={{ margin:"0 16px 12px", borderRadius:"var(--r-lg)", overflow:"hidden", boxShadow:"var(--sh-md)", opacity: isPast ? 0.6 : 1 }}>
+        <div className="msc-hd" style={{ display:"flex", justifyContent:"space-between", alignItems:"center", background: isPast ? "var(--text-3)" : undefined }}>
           <div>
-            {isServing && <div style={{ fontSize:11, color:"rgba(255,255,255,0.65)", marginBottom:2 }}>即將服事</div>}
+            {isServing && !isPast && <div style={{ fontSize:11, color:"rgba(255,255,255,0.65)", marginBottom:2 }}>即將服事</div>}
             <div style={{ fontFamily:"var(--serif)", fontSize:16, color:"#fff" }}>{fullDate}</div>
           </div>
           {isServing && (
@@ -2345,22 +2352,8 @@ function MyScheduleView({ member, weeks, api, showToast }) {
         </div>
 
         <div className="msc-bd">
-          {/* Role section */}
-          <div style={{ marginBottom:12 }}>
-            <div style={{ fontSize:11, fontWeight:600, color:"var(--text-3)", marginBottom:4 }}>擔任職務</div>
-            {isServing ? (
-              <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-                {roles.map((r,i) => (
-                  <span key={i} style={{ fontFamily:"var(--serif)", fontSize:15, color:"var(--navy)", fontWeight:600 }}>{r}</span>
-                ))}
-              </div>
-            ) : (
-              <div style={{ fontSize:13, color:"var(--text-3)" }}>本週沒有服事</div>
-            )}
-          </div>
-
           {/* Songs section */}
-          <div style={{ borderTop:"1px solid var(--border-lt)", paddingTop:10 }}>
+          <div>
             <div style={{ fontSize:11, fontWeight:600, color:"var(--text-3)", marginBottom:6 }}>本週詩歌</div>
 
             {isLeader ? (
@@ -2369,8 +2362,8 @@ function MyScheduleView({ member, weeks, api, showToast }) {
                   <div style={{ marginBottom:8 }}>
                     {wSongs.filter(s => s.name).map((s,i) => (
                       <div key={i} style={{ display:"flex", alignItems:"center", gap:6, marginBottom:4 }}>
-                        <span style={{ fontSize:13, color:"var(--text-1)" }}>{s.name}</span>
-                        {s.youtube && <a href={s.youtube} target="_blank" rel="noreferrer" style={{ fontSize:11, color:"#93c5fd", textDecoration:"none" }}>▶</a>}
+                        <span style={{ fontSize:13, color:"var(--text-1)", flex:1 }}>{s.name}</span>
+                        {ytLink(s.youtube)}
                       </div>
                     ))}
                   </div>
@@ -2378,7 +2371,7 @@ function MyScheduleView({ member, weeks, api, showToast }) {
                 {!hasSongs && !isExpanded && (
                   <div style={{ fontSize:12, color:"var(--text-3)", marginBottom:8 }}>尚未提交</div>
                 )}
-                {!isExpanded ? (
+                {!isPast && (!isExpanded ? (
                   <button className="btn btn-sm btn-ghost btn-pill" style={{ fontSize:12 }}
                     onClick={() => openSongForm(w.id, wSongs, wIdxGlobal)}>
                     {hasSongs ? "更新選歌" : "選歌 →"}
@@ -2414,13 +2407,13 @@ function MyScheduleView({ member, weeks, api, showToast }) {
                       <div style={{ fontSize:11, color:"var(--danger)", marginTop:6, textAlign:"center" }}>已超過截止日期，請盡快提交</div>
                     )}
                   </>
-                )}
+                ))}
               </>
             ) : hasSongs ? (
               wSongs.filter(s => s.name).map((s,i) => (
                 <div key={i} style={{ display:"flex", alignItems:"center", gap:6, marginBottom:4 }}>
-                  <span style={{ fontSize:13, color:"var(--text-1)" }}>{s.name}</span>
-                  {s.youtube && <a href={s.youtube} target="_blank" rel="noreferrer" style={{ fontSize:11, color:"#93c5fd", textDecoration:"none" }}>▶</a>}
+                  <span style={{ fontSize:13, color:"var(--text-1)", flex:1 }}>{s.name}</span>
+                  {ytLink(s.youtube)}
                 </div>
               ))
             ) : (
@@ -2432,21 +2425,23 @@ function MyScheduleView({ member, weeks, api, showToast }) {
     );
   };
 
+  const today = new Date().toISOString().slice(0, 10);
+  const futureWeeks = monthWeeks.filter(w => w.id >= today);
+  const pastWeeks   = monthWeeks.filter(w => w.id < today);
+
   return (
     <div>
-      <div className="sec-hd">
+      <div className="sec-hd" style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
         <div className="sec-h1">我的班表</div>
-      </div>
-
-      {/* Month navigation */}
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:10, marginBottom:16 }}>
-        <button className="btn btn-sm btn-ghost btn-pill" disabled={monthIdx <= 0}
-          onClick={() => setSelectedMonth(months[monthIdx - 1])}>‹</button>
-        <span style={{ fontSize:16, fontFamily:"var(--serif)", color:"var(--navy)", minWidth:52, textAlign:"center" }}>
-          {MONTH_ZH[parseInt(selectedMonth.slice(5, 7))] || selectedMonth}
-        </span>
-        <button className="btn btn-sm btn-ghost btn-pill" disabled={monthIdx >= months.length - 1}
-          onClick={() => setSelectedMonth(months[monthIdx + 1])}>›</button>
+        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+          <button className="btn btn-sm btn-ghost btn-pill" disabled={monthIdx <= 0}
+            onClick={() => setSelectedMonth(months[monthIdx - 1])}>‹</button>
+          <span style={{ fontSize:15, fontFamily:"var(--serif)", color:"var(--navy)", minWidth:40, textAlign:"center" }}>
+            {MONTH_ZH[parseInt(selectedMonth.slice(5, 7))] || selectedMonth}
+          </span>
+          <button className="btn btn-sm btn-ghost btn-pill" disabled={monthIdx >= months.length - 1}
+            onClick={() => setSelectedMonth(months[monthIdx + 1])}>›</button>
+        </div>
       </div>
 
       {loadingSchedule ? (
@@ -2454,7 +2449,15 @@ function MyScheduleView({ member, weeks, api, showToast }) {
       ) : monthWeeks.length === 0 ? (
         <div className="empty"><div className="empty-icon">📅</div><div>本月沒有排班資料</div></div>
       ) : (
-        monthWeeks.map(w => renderWeekCard(w))
+        <>
+          {futureWeeks.map(w => renderWeekCard(w, false))}
+          {pastWeeks.length > 0 && (
+            <>
+              {futureWeeks.length > 0 && <div style={{ margin:"4px 16px 12px", fontSize:11, color:"var(--text-3)", fontWeight:600 }}>已完成</div>}
+              {pastWeeks.map(w => renderWeekCard(w, true))}
+            </>
+          )}
+        </>
       )}
     </div>
   );
