@@ -819,7 +819,7 @@ function LoginScreen({ members, onLogin, onFetchMembers }) {
                   <label className="lbl">選擇成員</label>
                   <select className="sel" value={selected} onChange={e => setSelected(e.target.value)}>
                     <option value="">-- 請選擇 --</option>
-                    {members.map(m => <option key={m.id} value={m.id}>{m.name}（{ROLES_MAP[m.role]?.label}）</option>)}
+                    {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                   </select>
                 </div>
                 <button className="btn btn-navy btn-full btn-pill" disabled={!selected}
@@ -864,7 +864,7 @@ function LineBindScreen({ linePending, onBind, onCancel }) {
               <label className="lbl">我是</label>
               <select className="sel" value={selected} onChange={e => setSelected(e.target.value)}>
                 <option value="">-- 請選擇 --</option>
-                {members.map(m => <option key={m.id} value={m.id}>{m.name}（{ROLES_MAP[m.role]?.label}）</option>)}
+                {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
               </select>
             </div>
             <button className="btn btn-navy btn-full btn-pill" disabled={!selected}
