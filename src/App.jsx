@@ -625,6 +625,7 @@ export default function App() {
   const [aiDraft, setAiDraft]           = useState(null); // { settingId, setting, results: [{week,assignments}] }
   const [linePending, setLinePending]   = useState(null); // { lineUserId, displayName, pictureUrl } — first-time bind
   const [lineLoading, setLineLoading]   = useState(false);
+  const [showSwitchAccount, setShowSwitchAccount] = useState(false);
 
   const week = weeks[weekIdx];
 
@@ -724,8 +725,7 @@ export default function App() {
   if (!currentUser) {
     return (
       <div className="shell">
-        <LoginScreen members={members} onLogin={user => { setCurrentUser(user); setView("mySchedule"); }}
-          onFetchMembers={() => api("getMembers").then(setMembers)} />
+        <LoginScreen />
       </div>
     );
   }
@@ -744,6 +744,9 @@ export default function App() {
         </div>
         <div className="hdr-actions">
           <span className={`rpill ${ROLES_MAP[currentUser.role]?.cls}`}>{ROLES_MAP[currentUser.role]?.label}</span>
+          {currentUser.role === "admin" && (
+            <button className="btn btn-sm btn-ghost btn-pill" style={{ fontSize:12 }} onClick={() => setShowSwitchAccount(true)}>切換</button>
+          )}
           <button className="hdr-btn" title={currentUser.name} onClick={() => setCurrentUser(null)}>
             <div className={`av av-${currentUser.avColor?.replace('av-','')}`} style={{ width:28, height:28, fontSize:11, border:"none", boxShadow:"none" }}>{currentUser.initials}</div>
           </button>
@@ -771,24 +774,38 @@ export default function App() {
           </button>
         ))}
       </nav>
+
+      {showSwitchAccount && (
+        <div className="modal-overlay" onClick={() => setShowSwitchAccount(false)}>
+          <div className="modal-sheet" onClick={e => e.stopPropagation()}>
+            <div className="modal-sheet-handle" />
+            <div style={{ padding:"16px 20px 8px", fontWeight:700, fontSize:16 }}>切換帳號</div>
+            <div style={{ padding:"0 20px 8px", fontSize:13, color:"var(--text-3)" }}>選擇要代為操作的團員帳號</div>
+            <div style={{ overflowY:"auto", maxHeight:"60vh", padding:"0 12px 24px" }}>
+              {members.map(m => (
+                <button key={m.id} className="btn btn-ghost" style={{ width:"100%", textAlign:"left", padding:"10px 12px", borderRadius:10, display:"flex", alignItems:"center", gap:10, marginBottom:4 }}
+                  onClick={() => {
+                    setCurrentUser(m);
+                    setView("mySchedule");
+                    setShowSwitchAccount(false);
+                  }}>
+                  <div className={`av av-${(["c1","c2","c3","c4","c5","c6"])[m.id % 6]}`} style={{ width:32, height:32, fontSize:12, flexShrink:0 }}>{(m.name||"?").slice(0,2)}</div>
+                  <div>
+                    <div style={{ fontWeight:600, fontSize:14 }}>{m.name}</div>
+                    <div style={{ fontSize:11, color:"var(--text-3)" }}>{ROLES_MAP[m.role]?.label || "團員"}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 // ── Login ─────────────────────────────────────────────────────
-function LoginScreen({ members, onLogin, onFetchMembers }) {
-  const [showFallback, setShowFallback] = useState(false);
-  const [selected, setSelected]         = useState("");
-  const [fetched, setFetched]           = useState(false);
-  const [loading, setLoading]           = useState(false);
-
-  const load = async () => {
-    setLoading(true);
-    try { await onFetchMembers(); setFetched(true); }
-    catch(e) { alert("載入失敗：" + e.message); }
-    finally { setLoading(false); }
-  };
-
+function LoginScreen() {
   return (
     <div className="login-bg">
       <div className="login-glow">♪</div>
@@ -797,39 +814,11 @@ function LoginScreen({ members, onLogin, onFetchMembers }) {
       <div className="login-card">
         <div className="login-h">歡迎回來</div>
         <div className="login-sh">使用 LINE 帳號登入</div>
-
         <button className="btn btn-full btn-pill" style={{ background:"#06C755", color:"#fff", fontWeight:600, fontSize:16, display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}
           onClick={startLineLogin}>
           <svg width="22" height="22" viewBox="0 0 24 24" fill="white"><path d="M19.365 9.863c.349 0 .63.285.63.631 0 .345-.281.63-.63.63H17.61v1.125h1.755c.349 0 .63.283.63.63 0 .344-.281.629-.63.629h-2.386c-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63h2.386c.349 0 .63.285.63.63 0 .349-.281.63-.63.63H17.61v1.125h1.755zm-3.855 3.016c0 .27-.174.51-.432.596-.064.021-.133.031-.199.031-.211 0-.391-.09-.51-.25l-2.443-3.317v2.94c0 .344-.279.629-.631.629-.346 0-.626-.285-.626-.629V8.108c0-.27.173-.51.43-.595.06-.023.136-.033.194-.033.195 0 .375.104.495.254l2.462 3.33V8.108c0-.345.282-.63.63-.63.345 0 .63.285.63.63v4.771zm-5.741 0c0 .344-.282.629-.631.629-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63.349 0 .631.285.631.63v4.771zm-2.466.629H4.917c-.345 0-.63-.285-.63-.629V8.108c0-.345.285-.63.63-.63.348 0 .63.285.63.63v4.141h1.756c.348 0 .629.283.629.63 0 .344-.281.629-.629.629M24 10.314C24 4.943 18.615.572 12 .572S0 4.943 0 10.314c0 4.811 4.27 8.842 10.035 9.608.391.082.923.258 1.058.59.12.301.079.766.038 1.08l-.164 1.02c-.045.301-.24 1.186 1.049.645 1.291-.539 6.916-4.070 9.436-6.975C23.176 14.393 24 12.458 24 10.314"/></svg>
           使用 LINE 登入
         </button>
-
-        {!showFallback ? (
-          <button className="btn btn-ghost btn-full btn-pill" style={{ marginTop:8, fontSize:13 }}
-            onClick={() => { setShowFallback(true); load(); }}>
-            管理員備用登入
-          </button>
-        ) : (
-          <>
-            {!fetched ? (
-              <div style={{ textAlign:"center", color:"var(--c-muted)", fontSize:13, marginTop:12 }}>載入中…</div>
-            ) : (
-              <>
-                <div className="fgrp" style={{ marginTop:12 }}>
-                  <label className="lbl">選擇成員</label>
-                  <select className="sel" value={selected} onChange={e => setSelected(e.target.value)}>
-                    <option value="">-- 請選擇 --</option>
-                    {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                  </select>
-                </div>
-                <button className="btn btn-navy btn-full btn-pill" disabled={!selected}
-                  onClick={() => { const m = members.find(x=>x.id===selected); if(m) onLogin(m); }}>
-                  登入
-                </button>
-              </>
-            )}
-          </>
-        )}
       </div>
     </div>
   );

@@ -255,3 +255,10 @@ body { font-family: var(--sans); font-size: 15px; color: var(--text-1); backgrou
 /* ── Loading shimmer ─────────────────────────────── */
 .ld-bar { height: 3px; background: linear-gradient(90deg, var(--navy), var(--gold), var(--navy)); background-size: 200%; animation: shimmer 1.5s infinite; margin: 0 16px 14px; border-radius: 2px; }
 @keyframes shimmer { 0%{background-position:0%} 100%{background-position:200%} }
+
+/* ── Modal overlay / bottom sheet ───────────────── */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 200; display: flex; align-items: flex-end; justify-content: center; animation: fade-in .15s; }
+.modal-sheet { background: var(--white); border-radius: 20px 20px 0 0; width: 100%; max-width: 430px; box-shadow: 0 -4px 32px rgba(0,0,0,.18); padding-bottom: env(safe-area-inset-bottom, 0); animation: slide-up .22s cubic-bezier(.32,1,.45,1); }
+.modal-sheet-handle { width: 36px; height: 4px; border-radius: 2px; background: var(--border); margin: 12px auto 4px; }
+@keyframes fade-in { from{opacity:0} to{opacity:1} }
+@keyframes slide-up { from{transform:translateY(60px);opacity:0} to{transform:translateY(0);opacity:1} }
