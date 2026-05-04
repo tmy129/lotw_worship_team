@@ -680,8 +680,8 @@ export default function App() {
   useEffect(() => {
     if (!currentUser) return;
     setLoading(true);
-    Promise.all([api("getMembers"), api("getWeeks"), api("getVoteSettings")])
-      .then(([m, w, vs]) => {
+    api("getInitialData")
+      .then(({ members: m, weeks: w, voteSettings: vs }) => {
         setMembers(m); setWeeks(w); setVoteSettings(vs);
         if (w.length) {
           const today = new Date().toISOString().slice(0, 10);

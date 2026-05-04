@@ -4,6 +4,25 @@
 
 const SS = SpreadsheetApp.getActiveSpreadsheet();
 
+// ── Cache helpers (CacheService, TTL 5 min) ───────────────────
+const CACHE = CacheService.getScriptCache();
+const CACHE_TTL = 300;
+
+function getCached(key, fn) {
+  try {
+    const hit = CACHE.get(key);
+    if (hit) return JSON.parse(hit);
+  } catch(e) {}
+  const data = fn();
+  try { CACHE.put(key, JSON.stringify(data), CACHE_TTL); } catch(e) {}
+  return data;
+}
+
+function invalidateCache() {
+  const keys = Array.prototype.slice.call(arguments);
+  try { CACHE.removeAll(keys); } catch(e) {}
+}
+
 const SHEETS = {
   MEMBERS:       'Members',
   WEEKS:         'Weeks',
@@ -61,6 +80,7 @@ function route(e) {
   const action = params.action || body.action;
 
   const handlers = {
+    getInitialData:    getInitialData,
     getMembers:        getMembers,
     saveMember:        () => saveMember(body),
     deleteMember:      () => deleteMember(body.id),
@@ -203,8 +223,20 @@ function findRowById(sheetName, id) {
 
 function genId(prefix) { return prefix + Date.now().toString(36); }
 
+// ── Initial data batch endpoint ───────────────────────────────
+function getInitialData() {
+  return {
+    members:      getMembers(),
+    weeks:        getWeeks(),
+    voteSettings: getVoteSettings(),
+  };
+}
+
 // ── Members ───────────────────────────────────────────────────
 function getMembers() {
+  return getCached('members', _getMembers);
+}
+function _getMembers() {
   return sheetToObjects(SHEETS.MEMBERS)
     .filter(m => m.active !== false && m.active !== 'FALSE')
     .map(m => ({
@@ -225,6 +257,7 @@ function saveMember(body) {
         body.id, body.name, body.role, instruments,
         body.email, body.constraints, body.avColor, body.initials, true, canPPT
       ]]);
+      invalidateCache('members');
       return { updated: true, id: body.id };
     }
   }
@@ -233,6 +266,7 @@ function saveMember(body) {
   sh.appendRow([id, body.name, body.role || 'member', instruments, body.email,
     body.constraints || '無特殊限制', colors[Math.floor(Math.random()*colors.length)],
     body.name?.slice(-1) || '?', true, canPPT]);
+  invalidateCache('members');
   return { created: true, id };
 }
 
@@ -240,6 +274,7 @@ function deleteMember(id) {
   const found = findRowById(SHEETS.MEMBERS, id);
   if (!found) return { error: 'not found' };
   found.sheet.getRange(found.rowIdx, 9).setValue(false);
+  invalidateCache('members');
   return { deleted: true };
 }
 
@@ -250,6 +285,9 @@ function normalizeWeek(w) {
 }
 
 function getWeeks() {
+  return getCached('weeks', _getWeeks);
+}
+function _getWeeks() {
   return sheetToObjects(SHEETS.WEEKS).map(normalizeWeek);
 }
 
@@ -265,6 +303,7 @@ function getWeeksByMonths(monthsParam) {
 }
 
 function saveWeek(body) {
+  invalidateCache('weeks');
   const sh = SS.getSheetByName(SHEETS.WEEKS);
   const id    = normalizeWeekId(String(body.id || genId('w')));
   const label = id; // label mirrors the normalized id
@@ -283,6 +322,9 @@ function saveWeek(body) {
 
 // ── VoteSettings ──────────────────────────────────────────────
 function getVoteSettings() {
+  return getCached('voteSettings', _getVoteSettings);
+}
+function _getVoteSettings() {
   return sheetToObjects(SHEETS.VOTE_SETTINGS).map(s => ({
     ...s,
     months: String(s.months).split(',').map(Number),
@@ -292,6 +334,7 @@ function getVoteSettings() {
 }
 
 function saveVoteSetting(body) {
+  invalidateCache('voteSettings');
   const sh = SS.getSheetByName(SHEETS.VOTE_SETTINGS);
   const months = Array.isArray(body.months) ? body.months.join(',') : String(body.months);
   const deadline = body.deadline ? new Date(body.deadline) : '';
@@ -319,6 +362,7 @@ function deleteVoteSetting(id) {
   const found = findRowById(SHEETS.VOTE_SETTINGS, id);
   if (!found) return { error: 'not found' };
   found.sheet.deleteRow(found.rowIdx);
+  invalidateCache('voteSettings');
   return { deleted: true };
 }
 
@@ -382,7 +426,35 @@ function castVote(body) {
 function castVoteBulk(body) {
   const { memberId, weekIds, vote } = body;
   if (!weekIds || !weekIds.length) return { saved: 0 };
-  weekIds.forEach(weekId => castVote({ weekId, memberId, vote }));
+
+  const mid = String(memberId).trim();
+  const normalizedIds = weekIds.map(wid => normalizeWeekId(String(wid).trim()));
+  const sh = SS.getSheetByName(SHEETS.VOTES);
+  const now = new Date();
+
+  // Read the sheet once
+  const displayVals = sh.getLastRow() > 1
+    ? sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getDisplayValues()
+    : [[]];
+
+  // Update existing rows in-place
+  const updated = new Set();
+  for (let i = 1; i < displayVals.length; i++) {
+    const rowWkId = normalizeWeekId(String(displayVals[i][0]).trim());
+    const rowMbId = String(displayVals[i][1]).trim();
+    if (rowMbId === mid && normalizedIds.includes(rowWkId)) {
+      sh.getRange(i + 1, 3, 1, 2).setValues([[vote, now]]);
+      updated.add(rowWkId);
+    }
+  }
+
+  // Batch-append rows for any weekId not already in the sheet
+  const toAppend = normalizedIds.filter(wid => !updated.has(wid));
+  if (toAppend.length) {
+    const newRows = toAppend.map(wid => [wid, mid, vote, now]);
+    sh.getRange(sh.getLastRow() + 1, 1, newRows.length, 4).setValues(newRows);
+  }
+
   return { saved: weekIds.length };
 }
 
@@ -845,6 +917,7 @@ function bindLineUser(body) {
   const found = findRowById(SHEETS.MEMBERS, memberId);
   if (!found) throw new Error('Member not found');
   sh.getRange(found.rowIdx, lineCol).setValue(lineUserId);
+  invalidateCache('members');
   const members = getMembers();
   return { bound: true, member: members.find(m => m.id === memberId) || null };
 }
