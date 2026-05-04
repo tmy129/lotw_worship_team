@@ -611,9 +611,16 @@ function parseScheduleText(text, availableMembers) {
   });
 }
 
+const VIEW_IDS = ["mySchedule", "songs", "vote", "voteAdmin", "schedule", "members"];
+function hashToView(hash) {
+  const slug = hash.replace(/^#\/?/, "").toLowerCase();
+  return VIEW_IDS.find(id => id.toLowerCase() === slug) || null;
+}
+function viewToHash(view) { return "#/" + view.toLowerCase(); }
+
 export default function App() {
   const [currentUser, setCurrentUser]   = useState(null);
-  const [view, setView]                 = useState("mySchedule");
+  const [view, setViewRaw]              = useState(() => hashToView(window.location.hash) || "mySchedule");
   const [members, setMembers]           = useState([]);
   const [weeks, setWeeks]               = useState([]);
   const [weekIdx, setWeekIdx]           = useState(0);
@@ -628,6 +635,20 @@ export default function App() {
   const [showSwitchAccount, setShowSwitchAccount] = useState(false);
 
   const week = weeks[weekIdx];
+
+  const setView = useCallback((v) => {
+    setViewRaw(v);
+    window.location.hash = viewToHash(v);
+  }, []);
+
+  useEffect(() => {
+    const onHash = () => {
+      const v = hashToView(window.location.hash);
+      if (v) setViewRaw(v);
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
 
   const showToast = useCallback((msg, type="success") => {
     setToast({ msg, type });
@@ -654,7 +675,7 @@ export default function App() {
       })
       .catch(e => showToast('LINE 登入失敗：' + e.message, 'error'))
       .finally(() => setLineLoading(false));
-  }, []);
+  }, [setView, showToast]);
 
   useEffect(() => {
     if (!currentUser) return;
