@@ -737,17 +737,20 @@ function sendSongReminder(body) {
   if (song3?.name) return { skipped: true, reason: '已有第三首詩歌' };
 
   const schedule = getSchedule(wid);
-  const leaderAssignment = schedule.find(s => s.role === '主領');
-  if (!leaderAssignment) return { error: '該週找不到主領' };
+  const leaderAssignments = schedule.filter(s => s.role === '主領');
+  if (!leaderAssignments.length) return { error: '該週找不到主領' };
 
   const members = getMembers();
-  const leader = members.find(m => m.id === leaderAssignment.memberId || m.name === leaderAssignment.memberName);
-  if (!leader) return { error: '找不到主領成員資料' };
-
   const week = getWeeks().find(w => w.id === wid);
-  const msg = `【選歌提醒】${week?.label || wid}\n\n親愛的 ${leader.name}，\n\n提醒您本週第三首詩歌尚未提交，請盡快登入系統完成選歌，讓團員有時間準備。`;
-  sendLineMessage(leader.lineUserId, msg);
-  return { sent: true, to: leader.name };
+  const results = [];
+  for (const la of leaderAssignments) {
+    const leader = members.find(m => m.id === la.memberId || m.name === la.memberName);
+    if (!leader) { results.push({ error: '找不到主領成員：' + la.memberName }); continue; }
+    const msg = `【選歌提醒】${week?.label || wid}\n\n親愛的 ${leader.name}，\n\n提醒您本週第三首詩歌尚未提交，請盡快登入系統完成選歌，讓團員有時間準備。`;
+    sendLineMessage(leader.lineUserId, msg);
+    results.push({ sent: true, to: leader.name });
+  }
+  return { sent: true, results };
 }
 
 // 每週四自動檢查：若主領尚未提交第三首歌則發提醒

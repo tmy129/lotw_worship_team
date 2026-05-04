@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import "./App.css";
 
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbycUu9L4Q1hsclV9g0DOWWmSvQNI5UuG67DIWt3PyXmwl1sSvdQ28YHg-mLpYkSIbyM6A/exec";
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwC5OqRgQnn9-Tmnt26mHEgAouvvWVP4dwDZEXn6QT2NAC3ltlRpdXrW2nRAZbjmDPSWQ/exec";
 
 const LINE_CHANNEL_ID   = "2009964527"; // 填入你的 LINE Channel ID
 const LINE_REDIRECT_URI = "https://tmy129.github.io/lotw_worship_team/";
@@ -1617,7 +1617,10 @@ function ScheduleView({ weeks, members, voteSettings, currentUser, showToast, ap
     setScheduleByWeek(prev => {
       let a = [...(prev[weekId] || [])].filter(x => x.memberId !== memberId);
       if (newRole !== "—") {
-        a = a.filter(x => x.role !== newRole); // one person per role
+        // 主領 and 配唱 allow up to 2 people; all other roles are one-per-role
+        if (newRole !== "主領" && newRole !== "配唱") {
+          a = a.filter(x => x.role !== newRole);
+        }
         a.push({ role: newRole, memberId, memberName });
       }
       return { ...prev, [weekId]: a };
@@ -2095,11 +2098,12 @@ function ScheduleGrid({ weekRows, scheduleByWeek, allMembers, canEdit, onUpdate,
 
 // ── Songs ─────────────────────────────────────────────────────
 function SongsView({ week, weeks, weekIdx, setWeekIdx, songs, setSongs, schedule, currentUser, showToast, api }) {
-  const canManage = currentUser.role === "admin" || currentUser.role === "leader";
+  const leaderAssignments = schedule.filter(s => s.role === "主領");
+  const isThisWeekLeader = leaderAssignments.some(s => s.memberId === currentUser.id);
+  const canManage = currentUser.role === "admin" || currentUser.role === "leader" || isThisWeekLeader;
   const [saving, setSaving] = useState(false);
   const [reminding, setReminding] = useState(false);
 
-  const leaderAssignment = schedule.find(s => s.role === "主領");
   const song3 = songs.find(s => Number(s.slot) === 3);
   const song3Missing = !song3?.name;
   const deadline = week ? getDeadlineThursday(week.id) : null;
@@ -2111,7 +2115,7 @@ function SongsView({ week, weeks, weekIdx, setWeekIdx, songs, setSongs, schedule
       const res = await api("sendSongReminder", {}, { weekId: week.id });
       if (res.skipped) showToast("第三首詩歌已提交，不需提醒");
       else if (res.error) showToast(res.error, "error");
-      else showToast(`提醒已傳送給 ${leaderAssignment?.memberName || "主領"}`);
+      else showToast(`提醒已傳送給 ${leaderAssignments.map(l => l.memberName).join("、") || "主領"}`);
     } finally { setReminding(false); }
   };
 
@@ -2151,11 +2155,11 @@ function SongsView({ week, weeks, weekIdx, setWeekIdx, songs, setSongs, schedule
           {canManage && <button className="btn btn-sm btn-ghost btn-pill" onClick={loadPrevWeek}>帶入上週</button>}
         </div>
       </div>
-      {canManage && leaderAssignment && (
+      {canManage && leaderAssignments.length > 0 && (
         <div className="reminder" style={{ alignItems:"center" }}>
           <span className="reminder-icon">🎤</span>
           <div style={{ flex:1, fontSize:13 }}>
-            主領：<strong>{leaderAssignment.memberName}</strong>
+            主領：<strong>{leaderAssignments.map(l => l.memberName).join("、")}</strong>
             {song3Missing
               ? <span style={{ marginLeft:8, color:"var(--danger)" }}>第三首詩歌未提交（{deadlineStr}）</span>
               : <span style={{ marginLeft:8, color:"#15803d" }}>已提交第三首詩歌</span>
