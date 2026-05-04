@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import "./App.css";
 
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwC5OqRgQnn9-Tmnt26mHEgAouvvWVP4dwDZEXn6QT2NAC3ltlRpdXrW2nRAZbjmDPSWQ/exec";
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx4QQhXyWkPQeTsCDGq_88kzRLzCfKu3zn5mtuelbIZk3FOpCFtrB1nl-aR__GgkxKQcg/exec";
 
 const LINE_CHANNEL_ID   = "2009964527"; // 填入你的 LINE Channel ID
 const LINE_REDIRECT_URI = "https://tmy129.github.io/lotw_worship_team/";
