@@ -786,7 +786,7 @@ export default function App() {
         {loading && <div className="ld-bar" />}
         {toast && <div className={`toast${toast.type==="error"?" err":""}`}>{toast.msg}</div>}
 
-        {loading && !weeks.length ? <ViewSkeleton cards={4} /> : <>
+        {loading && !weeks.length ? <ViewLoading /> : <>
           {view === "vote"       && <VoteView voteSettings={voteSettings} currentUser={currentUser} weeks={weeks} showToast={showToast} api={api} />}
           {view === "voteAdmin"  && <VoteAdminView voteSettings={voteSettings} setVoteSettings={setVoteSettings} currentUser={currentUser} showToast={showToast} api={api} weeks={weeks} members={members} setView={setView} setAiDraft={setAiDraft} />}
           {view === "schedule"   && <ScheduleView weeks={weeks} members={members} voteSettings={voteSettings} currentUser={currentUser} showToast={showToast} api={api} aiDraft={aiDraft} setAiDraft={setAiDraft} />}
@@ -901,17 +901,11 @@ function LineBindScreen({ linePending, onBind, onCancel }) {
   );
 }
 
-// ── Shared skeleton loader ────────────────────────────────────
-function ViewSkeleton({ cards = 3 }) {
-  const widths = [[65,40],[80,55],[50,70],[75,35]];
+// ── Shared loading indicator ──────────────────────────────────
+function ViewLoading() {
   return (
-    <div style={{ paddingTop: 4 }}>
-      {Array.from({ length: cards }).map((_, i) => (
-        <div key={i} className="skel-card">
-          <div className="skel" style={{ width:`${widths[i%4][0]}%`, height:13, marginBottom:10 }} />
-          <div className="skel" style={{ width:`${widths[i%4][1]}%`, height:10 }} />
-        </div>
-      ))}
+    <div className="dots-loader">
+      <span /><span /><span />
     </div>
   );
 }
@@ -1368,35 +1362,36 @@ function VoteView({ voteSettings, currentUser, weeks, showToast, api }) {
         </div>
       )}
 
-      {loadingVotes ? <ViewSkeleton cards={3} /> : isClosed ? (
-        <div className="reminder" style={{ background:"var(--cream-md)", borderColor:"var(--border)" }}>
-          <span className="reminder-icon">🔒</span>
-          <div style={{ fontSize:13 }}>
-            <strong>投票已結束</strong> — 截止 {deadline}
-            <div style={{ marginTop:4, color:"var(--text-2)" }}>你的投票結果如下（僅供檢視）</div>
+      {loadingVotes ? <ViewLoading /> : <>
+        {isClosed ? (
+          <div className="reminder" style={{ background:"var(--cream-md)", borderColor:"var(--border)" }}>
+            <span className="reminder-icon">🔒</span>
+            <div style={{ fontSize:13 }}>
+              <strong>投票已結束</strong> — 截止 {deadline}
+              <div style={{ marginTop:4, color:"var(--text-2)" }}>你的投票結果如下（僅供檢視）</div>
+            </div>
           </div>
-        </div>
-      ) : daysLeft !== null ? (
-        <div className="reminder">
-          <span className="reminder-icon">{daysLeft <= 3 ? "🔴" : "⏰"}</span>
-          <div style={{ fontSize:13 }}>
-            截止：<strong>{deadline}</strong>
-            {daysLeft > 0 ? `，還有 ${daysLeft} 天` : "，已截止"}
-            <div style={{ marginTop:4, color:"var(--text-2)" }}>已填 {answeredCount}/{totalCount} 週</div>
+        ) : daysLeft !== null ? (
+          <div className="reminder">
+            <span className="reminder-icon">{daysLeft <= 3 ? "🔴" : "⏰"}</span>
+            <div style={{ fontSize:13 }}>
+              截止：<strong>{deadline}</strong>
+              {daysLeft > 0 ? `，還有 ${daysLeft} 天` : "，已截止"}
+              <div style={{ marginTop:4, color:"var(--text-2)" }}>已填 {answeredCount}/{totalCount} 週</div>
+            </div>
           </div>
-        </div>
-      ) : null}
+        ) : null}
 
-      {!isClosed && (
-        <div style={{ padding:"0 16px 12px" }}>
-          <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, color:"var(--text-3)", marginBottom:5 }}>
-            <span>填寫進度</span><span>{answeredCount}/{totalCount}</span>
+        {!isClosed && (
+          <div style={{ padding:"0 16px 12px" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, color:"var(--text-3)", marginBottom:5 }}>
+              <span>填寫進度</span><span>{answeredCount}/{totalCount}</span>
+            </div>
+            <div className="prog"><div className="prog-fill" style={{ width:`${totalCount ? answeredCount/totalCount*100 : 0}%` }} /></div>
           </div>
-          <div className="prog"><div className="prog-fill" style={{ width:`${totalCount ? answeredCount/totalCount*100 : 0}%` }} /></div>
-        </div>
-      )}
+        )}
 
-      {Object.entries(weeksByMonth).map(([month, monthWeeks]) => (
+        {Object.entries(weeksByMonth).map(([month, monthWeeks]) => (
         <div key={month}>
           <div className="mdiv" style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
             <span>{MONTH_NAMES[+month]}</span>
@@ -1436,6 +1431,7 @@ function VoteView({ voteSettings, currentUser, weeks, showToast, api }) {
           </div>
         </div>
       ))}
+      </>}
 
       {!isClosed && !loadingVotes && (
         <div style={{ padding:"16px", position:"sticky", bottom:84 }}>
@@ -2203,7 +2199,7 @@ function SongsView({ week, weeks, weekIdx, setWeekIdx, songs, setSongs, schedule
           {canManage && <button className="btn btn-sm btn-ghost btn-pill" onClick={loadPrevWeek}>帶入上週</button>}
         </div>
       </div>
-      {weekLoading ? <ViewSkeleton cards={3} /> : <>
+      {weekLoading ? <ViewLoading /> : <>
       {canManage && leaderAssignments.length > 0 && (
         <div className="reminder" style={{ alignItems:"center" }}>
           <span className="reminder-icon">🎤</span>
@@ -2524,7 +2520,7 @@ function MyScheduleView({ member, weeks, api, showToast, myScheduleData, setMySc
       </div>
 
       {(loadingSchedule || loadingSongs) ? (
-        <ViewSkeleton cards={3} />
+        <ViewLoading />
       ) : monthWeeks.length === 0 ? (
         <div className="empty"><div className="empty-icon">📅</div><div>本月沒有排班資料</div></div>
       ) : (
