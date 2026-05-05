@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import "./App.css";
 
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx4QQhXyWkPQeTsCDGq_88kzRLzCfKu3zn5mtuelbIZk3FOpCFtrB1nl-aR__GgkxKQcg/exec";
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwIbxfAmwNABD6oz1k3KGcJmXY7gIrkcVTCIMz353XSl3V6anrC1VsKEosM-5lWd4CO2Q/exec";
 
 const LINE_CHANNEL_ID   = "2009964527"; // 填入你的 LINE Channel ID
 const LINE_REDIRECT_URI = "https://tmy129.github.io/lotw_worship_team/";
@@ -2312,13 +2312,24 @@ function MyScheduleView({ member, weeks, api, showToast, myScheduleData, setMySc
     [weeks, selectedMonth]
   );
 
-  // Load songs for all weeks in selected month — one batch call
+  // Load songs for all weeks in selected month — one batch call with fallback
   useEffect(() => {
-    if (!selectedMonth) return;
+    if (!selectedMonth || !monthWeeks.length) return;
     api("getSongsForMonth", { month: selectedMonth })
       .then(monthSongs => setSongsMap(prev => ({ ...prev, ...monthSongs })))
-      .catch(() => {});
-  }, [selectedMonth]);
+      .catch(() => {
+        // Fallback: fetch individually (works with older GAS deployments)
+        Promise.all(monthWeeks.map(w =>
+          api("getSongs", { weekId: w.id }).then(s => ({ wid: w.id, songs: s || [] }))
+        )).then(results => {
+          setSongsMap(prev => {
+            const next = { ...prev };
+            for (const { wid, songs } of results) next[wid] = songs;
+            return next;
+          });
+        }).catch(() => {});
+      });
+  }, [selectedMonth, monthWeeks.length]);
 
   const monthIdx = months.indexOf(selectedMonth);
 
