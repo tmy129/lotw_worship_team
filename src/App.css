@@ -262,3 +262,7 @@ body { font-family: var(--sans); font-size: 15px; color: var(--text-1); backgrou
 .modal-sheet-handle { width: 36px; height: 4px; border-radius: 2px; background: var(--border); margin: 12px auto 4px; }
 @keyframes fade-in { from{opacity:0} to{opacity:1} }
 @keyframes slide-up { from{transform:translateY(60px);opacity:0} to{transform:translateY(0);opacity:1} }
+
+/* ── Skeleton loading ────────────────────────────────────────── */
+.skel { background: linear-gradient(90deg, var(--cream-md) 25%, #ede8df 50%, var(--cream-md) 75%); background-size: 200%; animation: shimmer 1.4s infinite; border-radius: 6px; }
+.skel-card { background: var(--white); border-radius: var(--r-lg); margin: 0 16px 12px; padding: 18px 20px; box-shadow: var(--sh-sm); border: 1px solid var(--border-lt); }

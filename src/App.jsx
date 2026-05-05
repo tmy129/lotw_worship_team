@@ -627,6 +627,7 @@ export default function App() {
   const [voteSettings, setVoteSettings] = useState([]);
   const [schedule, setSchedule]         = useState([]);
   const [songs, setSongs]               = useState([]);
+  const [weekLoading, setWeekLoading]   = useState(false);
   const [loading, setLoading]           = useState(false);
   const [toast, setToast]               = useState(null);
   const [aiDraft, setAiDraft]           = useState(null); // { settingId, setting, results: [{week,assignments}] }
@@ -702,6 +703,7 @@ export default function App() {
   useEffect(() => {
     if (!week) return;
     let cancelled = false;
+    setWeekLoading(true);
     const blankSongs = [
       { weekId: week.id, slot:1, name:"", youtube:"", confirmed:false },
       { weekId: week.id, slot:2, name:"", youtube:"", confirmed:false },
@@ -718,7 +720,7 @@ export default function App() {
       } else {
         setSongs(blankSongs);
       }
-    });
+    }).finally(() => { if (!cancelled) setWeekLoading(false); });
     return () => { cancelled = true; };
   }, [week]);
 
@@ -784,12 +786,14 @@ export default function App() {
         {loading && <div className="ld-bar" />}
         {toast && <div className={`toast${toast.type==="error"?" err":""}`}>{toast.msg}</div>}
 
-        {view === "vote"       && <VoteView voteSettings={voteSettings} currentUser={currentUser} weeks={weeks} showToast={showToast} api={api} />}
-        {view === "voteAdmin"  && <VoteAdminView voteSettings={voteSettings} setVoteSettings={setVoteSettings} currentUser={currentUser} showToast={showToast} api={api} weeks={weeks} members={members} setView={setView} setAiDraft={setAiDraft} />}
-        {view === "schedule"   && <ScheduleView weeks={weeks} members={members} voteSettings={voteSettings} currentUser={currentUser} showToast={showToast} api={api} aiDraft={aiDraft} setAiDraft={setAiDraft} />}
-        {view === "songs"      && <SongsView week={week} weeks={weeks} weekIdx={weekIdx} setWeekIdx={setWeekIdx} songs={songs} setSongs={setSongs} schedule={schedule} currentUser={currentUser} showToast={showToast} api={api} />}
-        {view === "members"    && <MembersView members={members} setMembers={setMembers} showToast={showToast} api={api} />}
-        {view === "mySchedule" && <MyScheduleView member={currentUser} weeks={weeks} api={api} showToast={showToast} myScheduleData={myScheduleData} setMyScheduleData={setMyScheduleData} />}
+        {loading && !weeks.length ? <ViewSkeleton cards={4} /> : <>
+          {view === "vote"       && <VoteView voteSettings={voteSettings} currentUser={currentUser} weeks={weeks} showToast={showToast} api={api} />}
+          {view === "voteAdmin"  && <VoteAdminView voteSettings={voteSettings} setVoteSettings={setVoteSettings} currentUser={currentUser} showToast={showToast} api={api} weeks={weeks} members={members} setView={setView} setAiDraft={setAiDraft} />}
+          {view === "schedule"   && <ScheduleView weeks={weeks} members={members} voteSettings={voteSettings} currentUser={currentUser} showToast={showToast} api={api} aiDraft={aiDraft} setAiDraft={setAiDraft} />}
+          {view === "songs"      && <SongsView week={week} weeks={weeks} weekIdx={weekIdx} setWeekIdx={setWeekIdx} songs={songs} setSongs={setSongs} schedule={schedule} currentUser={currentUser} showToast={showToast} api={api} weekLoading={weekLoading} />}
+          {view === "members"    && <MembersView members={members} setMembers={setMembers} showToast={showToast} api={api} />}
+          {view === "mySchedule" && <MyScheduleView member={currentUser} weeks={weeks} api={api} showToast={showToast} myScheduleData={myScheduleData} setMyScheduleData={setMyScheduleData} />}
+        </>}
       </div>
 
       <nav className="bnav">
@@ -893,6 +897,21 @@ function LineBindScreen({ linePending, onBind, onCancel }) {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Shared skeleton loader ────────────────────────────────────
+function ViewSkeleton({ cards = 3 }) {
+  const widths = [[65,40],[80,55],[50,70],[75,35]];
+  return (
+    <div style={{ paddingTop: 4 }}>
+      {Array.from({ length: cards }).map((_, i) => (
+        <div key={i} className="skel-card">
+          <div className="skel" style={{ width:`${widths[i%4][0]}%`, height:13, marginBottom:10 }} />
+          <div className="skel" style={{ width:`${widths[i%4][1]}%`, height:10 }} />
+        </div>
+      ))}
     </div>
   );
 }
@@ -1257,6 +1276,7 @@ function VoteView({ voteSettings, currentUser, weeks, showToast, api }) {
   const [myVotes, setMyVotes]               = useState({});
   const [activeSettingIdx, setActiveSettingIdx] = useState(0);
   const [saving, setSaving]                 = useState(false);
+  const [loadingVotes, setLoadingVotes]     = useState(false);
 
   // Show all settings (open + closed), default to first open one
   const allSettings = voteSettings;
@@ -1282,12 +1302,13 @@ function VoteView({ voteSettings, currentUser, weeks, showToast, api }) {
 
   useEffect(() => {
     if (!activeSetting) return;
+    setLoadingVotes(true);
     api("getVotesByMember", { memberId: currentUser.id, months: activeSetting.months.join(",") })
       .then(votes => {
         const map = {};
         votes.forEach(v => { map[v.weekId] = v.vote; });
         setMyVotes(map);
-      });
+      }).finally(() => setLoadingVotes(false));
   }, [activeSetting?.id]);
 
   const setVote = (weekId, vote) => setMyVotes(prev => ({ ...prev, [weekId]: vote }));
@@ -1347,7 +1368,7 @@ function VoteView({ voteSettings, currentUser, weeks, showToast, api }) {
         </div>
       )}
 
-      {isClosed ? (
+      {loadingVotes ? <ViewSkeleton cards={3} /> : isClosed ? (
         <div className="reminder" style={{ background:"var(--cream-md)", borderColor:"var(--border)" }}>
           <span className="reminder-icon">🔒</span>
           <div style={{ fontSize:13 }}>
@@ -1416,7 +1437,7 @@ function VoteView({ voteSettings, currentUser, weeks, showToast, api }) {
         </div>
       ))}
 
-      {!isClosed && (
+      {!isClosed && !loadingVotes && (
         <div style={{ padding:"16px", position:"sticky", bottom:84 }}>
           <button className="btn btn-navy btn-full btn-pill" onClick={saveAll} disabled={saving}>
             {saving ? "儲存中..." : `儲存投票（${answeredCount}/${totalCount} 週）`}
@@ -2124,7 +2145,7 @@ function ScheduleGrid({ weekRows, scheduleByWeek, allMembers, canEdit, onUpdate,
 }
 
 // ── Songs ─────────────────────────────────────────────────────
-function SongsView({ week, weeks, weekIdx, setWeekIdx, songs, setSongs, schedule, currentUser, showToast, api }) {
+function SongsView({ week, weeks, weekIdx, setWeekIdx, songs, setSongs, schedule, currentUser, showToast, api, weekLoading }) {
   const leaderAssignments = schedule.filter(s => s.role === "主領");
   const isThisWeekLeader = leaderAssignments.some(s => s.memberId === currentUser.id);
   const canManage = currentUser.role === "admin" || currentUser.role === "leader" || isThisWeekLeader;
@@ -2182,6 +2203,7 @@ function SongsView({ week, weeks, weekIdx, setWeekIdx, songs, setSongs, schedule
           {canManage && <button className="btn btn-sm btn-ghost btn-pill" onClick={loadPrevWeek}>帶入上週</button>}
         </div>
       </div>
+      {weekLoading ? <ViewSkeleton cards={3} /> : <>
       {canManage && leaderAssignments.length > 0 && (
         <div className="reminder" style={{ alignItems:"center" }}>
           <span className="reminder-icon">🎤</span>
@@ -2237,6 +2259,7 @@ function SongsView({ week, weeks, weekIdx, setWeekIdx, songs, setSongs, schedule
           </div>
         )}
       </div>
+      </>}
     </div>
   );
 }
@@ -2277,6 +2300,7 @@ function MyScheduleView({ member, weeks, api, showToast, myScheduleData, setMySc
   const [upcomingMap, setUpcomingMap]   = useState(myScheduleData || {}); // { weekId: roles[] }
   const [songsMap, setSongsMap]         = useState({}); // { weekId: songs[] }
   const [loadingSchedule, setLoadingSchedule] = useState(!Object.keys(myScheduleData || {}).length);
+  const [loadingSongs, setLoadingSongs] = useState(false);
   const [expandedWeek, setExpandedWeek] = useState(null);
 
   // Set selectedMonth once weeks load (useState initializer runs before weeks load)
@@ -2315,6 +2339,7 @@ function MyScheduleView({ member, weeks, api, showToast, myScheduleData, setMySc
   // Load songs for all weeks in selected month — one batch call with fallback
   useEffect(() => {
     if (!selectedMonth || !monthWeeks.length) return;
+    setLoadingSongs(true);
     api("getSongsForMonth", { month: selectedMonth })
       .then(monthSongs => setSongsMap(prev => ({ ...prev, ...monthSongs })))
       .catch(() => {
@@ -2327,8 +2352,8 @@ function MyScheduleView({ member, weeks, api, showToast, myScheduleData, setMySc
             for (const { wid, songs } of results) next[wid] = songs;
             return next;
           });
-        }).catch(() => {});
-      });
+        }).catch(() => {}).finally(() => setLoadingSongs(false));
+      }).finally(() => setLoadingSongs(false));
   }, [selectedMonth, monthWeeks.length]);
 
   const monthIdx = months.indexOf(selectedMonth);
@@ -2498,8 +2523,8 @@ function MyScheduleView({ member, weeks, api, showToast, myScheduleData, setMySc
         </div>
       </div>
 
-      {loadingSchedule ? (
-        <div className="empty"><div className="empty-icon">⏳</div><div>載入中…</div></div>
+      {(loadingSchedule || loadingSongs) ? (
+        <ViewSkeleton cards={3} />
       ) : monthWeeks.length === 0 ? (
         <div className="empty"><div className="empty-icon">📅</div><div>本月沒有排班資料</div></div>
       ) : (
