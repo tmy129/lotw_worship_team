@@ -80,7 +80,8 @@ function route(e) {
   const action = params.action || body.action;
 
   const handlers = {
-    getInitialData:    getInitialData,
+    getInitialData:    () => getInitialData(params),
+    getSongsForMonth:  () => getSongsForMonth(params),
     getMembers:        getMembers,
     saveMember:        () => saveMember(body),
     deleteMember:      () => deleteMember(body.id),
@@ -224,12 +225,34 @@ function findRowById(sheetName, id) {
 function genId(prefix) { return prefix + Date.now().toString(36); }
 
 // ── Initial data batch endpoint ───────────────────────────────
-function getInitialData() {
-  return {
+// Pass memberId to also return that member's full schedule in one shot.
+function getInitialData(params) {
+  const result = {
     members:      getMembers(),
     weeks:        getWeeks(),
     voteSettings: getVoteSettings(),
   };
+  if (params && params.memberId) {
+    result.mySchedule = getMySchedule(params.memberId);
+  }
+  return result;
+}
+
+// ── Songs by month (batch) ────────────────────────────────────
+// Returns { weekId: songs[] } for every week in the given month ("yyyy-mm").
+function getSongsForMonth(params) {
+  const { month } = params || {};
+  if (!month) return {};
+  const weekIds = getWeeks().filter(w => w.id.startsWith(month)).map(w => w.id);
+  const allSongs = sheetToObjectsRaw(SHEETS.SONGS);
+  const result = {};
+  for (const wid of weekIds) {
+    result[wid] = allSongs
+      .filter(s => normalizeWeekId(s.weekId) === wid)
+      .sort((a, b) => Number(a.slot) - Number(b.slot))
+      .map(s => ({ ...s, youtube: s.youtube || '' }));
+  }
+  return result;
 }
 
 // ── Members ───────────────────────────────────────────────────

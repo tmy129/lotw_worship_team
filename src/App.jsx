@@ -633,6 +633,7 @@ export default function App() {
   const [linePending, setLinePending]   = useState(null); // { lineUserId, displayName, pictureUrl } — first-time bind
   const [lineLoading, setLineLoading]   = useState(false);
   const [showSwitchAccount, setShowSwitchAccount] = useState(false);
+  const [myScheduleData, setMyScheduleData] = useState({}); // { weekId: roles[] }
 
   const week = weeks[weekIdx];
 
@@ -680,13 +681,18 @@ export default function App() {
   useEffect(() => {
     if (!currentUser) return;
     setLoading(true);
-    api("getInitialData")
-      .then(({ members: m, weeks: w, voteSettings: vs }) => {
+    api("getInitialData", { memberId: currentUser.id })
+      .then(({ members: m, weeks: w, voteSettings: vs, mySchedule }) => {
         setMembers(m); setWeeks(w); setVoteSettings(vs);
         if (w.length) {
           const today = new Date().toISOString().slice(0, 10);
           const idx = w.findIndex(wk => wk.id >= today);
           setWeekIdx(idx >= 0 ? idx : w.length - 1);
+        }
+        if (mySchedule) {
+          const map = {};
+          for (const item of mySchedule) map[item.weekId] = item.roles;
+          setMyScheduleData(map);
         }
       })
       .catch(e => showToast(e.message, "error"))
@@ -783,7 +789,7 @@ export default function App() {
         {view === "schedule"   && <ScheduleView weeks={weeks} members={members} voteSettings={voteSettings} currentUser={currentUser} showToast={showToast} api={api} aiDraft={aiDraft} setAiDraft={setAiDraft} />}
         {view === "songs"      && <SongsView week={week} weeks={weeks} weekIdx={weekIdx} setWeekIdx={setWeekIdx} songs={songs} setSongs={setSongs} schedule={schedule} currentUser={currentUser} showToast={showToast} api={api} />}
         {view === "members"    && <MembersView members={members} setMembers={setMembers} showToast={showToast} api={api} />}
-        {view === "mySchedule" && <MyScheduleView member={currentUser} weeks={weeks} api={api} showToast={showToast} />}
+        {view === "mySchedule" && <MyScheduleView member={currentUser} weeks={weeks} api={api} showToast={showToast} myScheduleData={myScheduleData} setMyScheduleData={setMyScheduleData} />}
       </div>
 
       <nav className="bnav">
@@ -2255,7 +2261,7 @@ function fmtMonth(id) {
 }
 
 // ── My Schedule ───────────────────────────────────────────────
-function MyScheduleView({ member, weeks, api, showToast }) {
+function MyScheduleView({ member, weeks, api, showToast, myScheduleData, setMyScheduleData }) {
   // Derive sorted unique months from weeks list
   const months = useMemo(() => {
     const seen = new Set();
@@ -2268,9 +2274,9 @@ function MyScheduleView({ member, weeks, api, showToast }) {
   }, [weeks]);
 
   const [selectedMonth, setSelectedMonth] = useState("");
-  const [upcomingMap, setUpcomingMap]   = useState({}); // { weekId: roles[] }
+  const [upcomingMap, setUpcomingMap]   = useState(myScheduleData || {}); // { weekId: roles[] }
   const [songsMap, setSongsMap]         = useState({}); // { weekId: songs[] }
-  const [loadingSchedule, setLoadingSchedule] = useState(true);
+  const [loadingSchedule, setLoadingSchedule] = useState(!Object.keys(myScheduleData || {}).length);
   const [expandedWeek, setExpandedWeek] = useState(null);
 
   // Set selectedMonth once weeks load (useState initializer runs before weeks load)
@@ -2282,13 +2288,22 @@ function MyScheduleView({ member, weeks, api, showToast }) {
   const [drafts, setDrafts]             = useState({}); // { weekId: [{slot,name,youtube}] }
   const [submitting, setSubmitting]     = useState(false);
 
-  // Load this member's full schedule once
+  // Sync upcomingMap when pre-loaded data arrives (e.g. after login)
   useEffect(() => {
+    if (!myScheduleData || !Object.keys(myScheduleData).length) return;
+    setUpcomingMap(myScheduleData);
+    setLoadingSchedule(false);
+  }, [myScheduleData]);
+
+  // Fallback: fetch individually if App-level data not yet available
+  useEffect(() => {
+    if (Object.keys(myScheduleData || {}).length) return; // already have it
     setLoadingSchedule(true);
     api("getMySchedule", { memberId: member.id }).then(list => {
       const map = {};
       for (const item of (list || [])) map[item.weekId] = item.roles;
       setUpcomingMap(map);
+      setMyScheduleData?.(map);
     }).catch(() => {}).finally(() => setLoadingSchedule(false));
   }, [member.id]);
 
@@ -2297,19 +2312,12 @@ function MyScheduleView({ member, weeks, api, showToast }) {
     [weeks, selectedMonth]
   );
 
-  // Load songs for all weeks in selected month (parallel)
+  // Load songs for all weeks in selected month — one batch call
   useEffect(() => {
-    if (!monthWeeks.length) return;
-    const ids = monthWeeks.map(w => w.id);
-    Promise.all(ids.map(wid =>
-      api("getSongs", { weekId: wid }).then(s => ({ wid, songs: s || [] }))
-    )).then(results => {
-      setSongsMap(prev => {
-        const next = { ...prev };
-        for (const { wid, songs } of results) next[wid] = songs;
-        return next;
-      });
-    }).catch(() => {});
+    if (!selectedMonth) return;
+    api("getSongsForMonth", { month: selectedMonth })
+      .then(monthSongs => setSongsMap(prev => ({ ...prev, ...monthSongs })))
+      .catch(() => {});
   }, [selectedMonth]);
 
   const monthIdx = months.indexOf(selectedMonth);
