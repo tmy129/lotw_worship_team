@@ -757,7 +757,7 @@ export default function App() {
     <div className="shell">
       <div className="hdr">
         <div className="hdr-brand">
-          <div className="hdr-mark">♪</div>
+          <img src="./logo.png" alt="LOTW" style={{ width:36, height:36, borderRadius:"50%", objectFit:"cover", flexShrink:0 }} />
           <div>
             <div className="hdr-name">LOTW Worship Team</div>
             <div className="hdr-sub">{week?.label || "世界之光敬拜團"}</div>
@@ -829,7 +829,7 @@ export default function App() {
 function LoginScreen() {
   return (
     <div className="login-bg">
-      <div className="login-glow">♪</div>
+      <img src="./logo.png" alt="LOTW Worship Team" style={{ width:160, height:160, borderRadius:"50%", objectFit:"cover", margin:"0 auto 8px", display:"block" }} />
       <div className="login-church">世界之光敬拜團</div>
       <div className="login-church-en">LOTW WORSHIP TEAM</div>
       <div className="login-card">
@@ -856,7 +856,7 @@ function LineBindScreen({ linePending, onBind, onCancel }) {
 
   return (
     <div className="login-bg">
-      <div className="login-glow">♪</div>
+      <img src="./logo.png" alt="LOTW Worship Team" style={{ width:160, height:160, borderRadius:"50%", objectFit:"cover", margin:"0 auto 8px", display:"block" }} />
       <div className="login-church">世界之光敬拜團</div>
       <div className="login-church-en">LOTW WORSHIP TEAM</div>
       <div className="login-card">
