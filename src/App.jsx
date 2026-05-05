@@ -786,7 +786,7 @@ export default function App() {
         {loading && <div className="ld-bar" />}
         {toast && <div className={`toast${toast.type==="error"?" err":""}`}>{toast.msg}</div>}
 
-        {loading && !weeks.length ? <ViewLoading /> : <>
+        {loading && !weeks.length ? <SkelMySchedule /> : <>
           {view === "vote"       && <VoteView voteSettings={voteSettings} currentUser={currentUser} weeks={weeks} showToast={showToast} api={api} />}
           {view === "voteAdmin"  && <VoteAdminView voteSettings={voteSettings} setVoteSettings={setVoteSettings} currentUser={currentUser} showToast={showToast} api={api} weeks={weeks} members={members} setView={setView} setAiDraft={setAiDraft} />}
           {view === "schedule"   && <ScheduleView weeks={weeks} members={members} voteSettings={voteSettings} currentUser={currentUser} showToast={showToast} api={api} aiDraft={aiDraft} setAiDraft={setAiDraft} />}
@@ -901,11 +901,93 @@ function LineBindScreen({ linePending, onBind, onCancel }) {
   );
 }
 
-// ── Shared loading indicator ──────────────────────────────────
-function ViewLoading() {
+// ── Skeleton loaders (shimmer, content-matched) ───────────────
+// Generic "N stacked cards" — used for app shell / unknown context
+function ViewLoading({ cards = 3 }) {
   return (
-    <div className="dots-loader">
-      <span /><span /><span />
+    <div>
+      {Array.from({ length: cards }).map((_, i) => (
+        <div key={i} className="skel-card">
+          <div className="skel" style={{ height: 14, width: "55%", borderRadius: 6, marginBottom: 12 }} />
+          <div className="skel" style={{ height: 11, width: "80%", borderRadius: 6, marginBottom: 8 }} />
+          <div className="skel" style={{ height: 11, width: "65%", borderRadius: 6 }} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Songs tab — reminder bar + card with 3 song rows
+function SkelSongs() {
+  return (
+    <div>
+      <div className="skel" style={{ margin: "0 16px 14px", height: 50, borderRadius: 10 }} />
+      <div className="card">
+        {[0, 1, 2].map(i => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: i < 2 ? "1px solid var(--border-lt)" : "none" }}>
+            <div className="skel" style={{ width: 30, height: 30, borderRadius: "50%", flexShrink: 0 }} />
+            <div className="skel" style={{ flex: 1, height: 15, borderRadius: 6 }} />
+            <div className="skel" style={{ width: 52, height: 22, borderRadius: 20, flexShrink: 0 }} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Vote tab — deadline banner + progress bar + 3 vcards
+function SkelVote() {
+  return (
+    <div>
+      <div className="skel" style={{ margin: "0 16px 14px", height: 52, borderRadius: 10 }} />
+      <div style={{ padding: "0 16px 14px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+          <div className="skel" style={{ width: 56, height: 12, borderRadius: 4 }} />
+          <div className="skel" style={{ width: 36, height: 12, borderRadius: 4 }} />
+        </div>
+        <div className="skel" style={{ height: 6, borderRadius: 4 }} />
+      </div>
+      <div className="skel" style={{ margin: "0 16px 10px", width: 60, height: 13, borderRadius: 4 }} />
+      {[0, 1, 2].map(i => (
+        <div key={i} style={{ margin: "0 16px 10px", borderRadius: 12, overflow: "hidden", border: "1.5px solid var(--border-lt)", background: "var(--white)" }}>
+          <div style={{ padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div>
+              <div className="skel" style={{ width: 44, height: 15, borderRadius: 4, marginBottom: 6 }} />
+              <div className="skel" style={{ width: 68, height: 12, borderRadius: 4 }} />
+            </div>
+            <div className="skel" style={{ width: 52, height: 22, borderRadius: 20 }} />
+          </div>
+          <div style={{ padding: "0 16px 14px", display: "flex", gap: 8 }}>
+            <div className="skel" style={{ flex: 1, height: 34, borderRadius: 20 }} />
+            <div className="skel" style={{ flex: 1, height: 34, borderRadius: 20 }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// My Schedule tab — 3 week cards with dark header + body lines
+function SkelMySchedule() {
+  return (
+    <div>
+      {[0, 1, 2].map(i => (
+        <div key={i} style={{ margin: "0 16px 12px", borderRadius: 14, overflow: "hidden", boxShadow: "var(--sh-md)" }}>
+          <div className="msc-hd">
+            <div className="skel" style={{ width: 80, height: 11, borderRadius: 4, marginBottom: 8, opacity: 0.25 }} />
+            <div className="skel" style={{ width: 160, height: 16, borderRadius: 4, opacity: 0.25 }} />
+          </div>
+          <div className="msc-bd">
+            <div className="skel" style={{ width: "38%", height: 11, borderRadius: 4, marginBottom: 12 }} />
+            {[0, 1, 2].map(j => (
+              <div key={j} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: j < 2 ? 8 : 0 }}>
+                <div className="skel" style={{ flex: 1, height: 13, borderRadius: 4 }} />
+                <div className="skel" style={{ width: 38, height: 20, borderRadius: 20, flexShrink: 0 }} />
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -1362,7 +1444,7 @@ function VoteView({ voteSettings, currentUser, weeks, showToast, api }) {
         </div>
       )}
 
-      {loadingVotes ? <ViewLoading /> : <>
+      {loadingVotes ? <SkelVote /> : <>
         {isClosed ? (
           <div className="reminder" style={{ background:"var(--cream-md)", borderColor:"var(--border)" }}>
             <span className="reminder-icon">🔒</span>
@@ -2199,7 +2281,7 @@ function SongsView({ week, weeks, weekIdx, setWeekIdx, songs, setSongs, schedule
           {canManage && <button className="btn btn-sm btn-ghost btn-pill" onClick={loadPrevWeek}>帶入上週</button>}
         </div>
       </div>
-      {weekLoading ? <ViewLoading /> : <>
+      {weekLoading ? <SkelSongs /> : <>
       {canManage && leaderAssignments.length > 0 && (
         <div className="reminder" style={{ alignItems:"center" }}>
           <span className="reminder-icon">🎤</span>
@@ -2520,7 +2602,7 @@ function MyScheduleView({ member, weeks, api, showToast, myScheduleData, setMySc
       </div>
 
       {(loadingSchedule || loadingSongs) ? (
-        <ViewLoading />
+        <SkelMySchedule />
       ) : monthWeeks.length === 0 ? (
         <div className="empty"><div className="empty-icon">📅</div><div>本月沒有排班資料</div></div>
       ) : (
