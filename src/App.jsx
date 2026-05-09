@@ -619,7 +619,15 @@ function hashToView(hash) {
 function viewToHash(view) { return "#/" + view.toLowerCase(); }
 
 export default function App() {
-  const [currentUser, setCurrentUser]   = useState(null);
+  const SESSION_KEY = "lotw_user";
+  const [currentUser, setCurrentUser]   = useState(() => {
+    try { const s = localStorage.getItem("lotw_user"); return s ? JSON.parse(s) : null; } catch { return null; }
+  });
+  // Persist login across page reloads
+  const saveUser = useCallback((user) => {
+    setCurrentUser(user);
+    try { user ? localStorage.setItem(SESSION_KEY, JSON.stringify(user)) : localStorage.removeItem(SESSION_KEY); } catch {}
+  }, []);
   const [view, setViewRaw]              = useState(() => hashToView(window.location.hash) || "mySchedule");
   const [members, setMembers]           = useState([]);
   const [weeks, setWeeks]               = useState([]);
@@ -672,7 +680,7 @@ export default function App() {
     setLineLoading(true);
     api("loginWithLine", { code, code_verifier: verifier, redirect_uri: LINE_REDIRECT_URI })
       .then(res => {
-        if (res.member) { setCurrentUser(res.member); setView("mySchedule"); }
+        if (res.member) { saveUser(res.member); setView("mySchedule"); }
         else setLinePending({ lineUserId: res.lineUserId, displayName: res.displayName, pictureUrl: res.pictureUrl });
       })
       .catch(e => showToast('LINE 登入失敗：' + e.message, 'error'))
@@ -742,7 +750,7 @@ export default function App() {
           linePending={linePending}
           onBind={(member) => {
             api("bindLineUser", {}, { memberId: member.id, lineUserId: linePending.lineUserId })
-              .then(res => { setLinePending(null); setCurrentUser(res.member || member); setView("mySchedule"); })
+              .then(res => { setLinePending(null); saveUser(res.member || member); setView("mySchedule"); })
               .catch(e => showToast('綁定失敗：' + e.message, 'error'));
           }}
           onCancel={() => setLinePending(null)}
@@ -776,7 +784,7 @@ export default function App() {
           {currentUser.role === "admin" && (
             <button className="btn btn-sm btn-ghost btn-pill" style={{ fontSize:12 }} onClick={() => setShowSwitchAccount(true)}>切換</button>
           )}
-          <button className="hdr-btn" title={currentUser.name} onClick={() => setCurrentUser(null)}>
+          <button className="hdr-btn" title={currentUser.name} onClick={() => saveUser(null)}>
             <div className={`av av-${currentUser.avColor?.replace('av-','')}`} style={{ width:28, height:28, fontSize:11, border:"none", boxShadow:"none" }}>{currentUser.initials}</div>
           </button>
         </div>
@@ -816,7 +824,7 @@ export default function App() {
               {members.map(m => (
                 <button key={m.id} className="btn btn-ghost" style={{ width:"100%", textAlign:"left", padding:"10px 12px", borderRadius:10, display:"flex", alignItems:"center", gap:10, marginBottom:4 }}
                   onClick={() => {
-                    setCurrentUser(m);
+                    saveUser(m);
                     setView("mySchedule");
                     setShowSwitchAccount(false);
                   }}>
