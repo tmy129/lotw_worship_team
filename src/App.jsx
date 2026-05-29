@@ -553,14 +553,14 @@ function enforcePPT(parsed, weekRows) {
   return parsed;
 }
 
-// Assign 練前讀經/敬拜 leader for each week.
+// Assign 練前預備/敬拜 leader for each week.
 // Picks the scheduled non-PPT member whose last pre-practice date is furthest in the past.
 // history: { [memberId]: "yyyy-mm-dd" }  — missing/empty means never assigned (oldest possible).
 function assignPrePractice(parsed, history) {
   for (const item of parsed) {
     const scheduled = item.assignments.filter(a =>
       a.memberId && a.memberName && a.memberName !== "—" &&
-      a.role !== "PPT" && a.role !== "練前讀經"
+      a.role !== "PPT" && a.role !== "練前預備"
     );
     if (!scheduled.length) continue;
 
@@ -571,8 +571,8 @@ function assignPrePractice(parsed, history) {
       return d2 < d1 ? a : best;
     });
 
-    item.assignments = item.assignments.filter(a => a.role !== "練前讀經");
-    item.assignments.push({ role: "練前讀經", memberId: pick.memberId, memberName: pick.memberName });
+    item.assignments = item.assignments.filter(a => a.role !== "練前預備");
+    item.assignments.push({ role: "練前預備", memberId: pick.memberId, memberName: pick.memberName });
   }
   return parsed;
 }
@@ -1640,7 +1640,7 @@ const ROLE_COLORS = {
   "吉他":     { bg:"#fce7f3", color:"#9d174d" },
   "BASS":     { bg:"#e0f2fe", color:"#075985" },
   "PPT":      { bg:"#f1f5f9", color:"#475569" },
-  "練前讀經": { bg:"#fef9c3", color:"#713f12" },
+  "練前預備": { bg:"#fef9c3", color:"#713f12" },
 };
 
 function ScheduleView({ weeks, members, voteSettings, currentUser, showToast, api, aiDraft, setAiDraft }) {
@@ -1776,9 +1776,9 @@ function ScheduleView({ weeks, members, voteSettings, currentUser, showToast, ap
 
   const updatePrePractice = (weekId, memberId, memberName) => {
     setScheduleByWeek(prev => {
-      const without = (prev[weekId] || []).filter(a => a.role !== "練前讀經");
+      const without = (prev[weekId] || []).filter(a => a.role !== "練前預備");
       const updated = memberId
-        ? [...without, { role: "練前讀經", memberId, memberName }]
+        ? [...without, { role: "練前預備", memberId, memberName }]
         : without;
       return { ...prev, [weekId]: updated };
     });
@@ -1924,10 +1924,10 @@ function ScheduleGridCard({ weekRows, scheduleByWeek, allMembers, canEdit, onUpd
         "吉他":     { bg:"#fce7f3", fg:"#9d174d" },
         "BASS":     { bg:"#e0f2fe", fg:"#075985" },
         "PPT":      { bg:"#f1f5f9", fg:"#475569" },
-        "練前讀經": { bg:"#fef9c3", fg:"#713f12" },
+        "練前預備": { bg:"#fef9c3", fg:"#713f12" },
       };
       const SP_ROW_H = 36; // height of the 講員 special row
-      const PP_ROW_H = 36; // height of the 練前讀經 special row
+      const PP_ROW_H = 36; // height of the 練前預備 special row
 
       const W = PAD * 2 + NAME_W + weekRows.length * COL_W;
       const H = PAD * 2 + TITLE_H + HDR_H + SP_ROW_H + PP_ROW_H + allMembers.length * ROW_H;
@@ -1981,6 +1981,31 @@ function ScheduleGridCard({ weekRows, scheduleByWeek, allMembers, canEdit, onUpd
       c.lineTo(tableX + tableW, tableY + HDR_H);
       c.stroke();
 
+      // Helper: draw a pill badge clipped to its column cell
+      const drawPill = (text, cellX, rowY, rowH, bg, fg) => {
+        const INNER = COL_W - 8; // max badge width (4px margin each side)
+        c.save();
+        c.beginPath();
+        c.rect(cellX, rowY, COL_W, rowH);
+        c.clip();
+        c.font = `bold 11px ${FONT}`;
+        const cx = cellX + COL_W / 2;
+        // Truncate with ellipsis if too wide
+        let label = text;
+        while (c.measureText(label).width + 14 > INNER && label.length > 1)
+          label = label.slice(0, -1);
+        if (label !== text) label += "…";
+        const tw = c.measureText(label).width;
+        const bw = tw + 14; const bh = 20; const r = 10;
+        const bx = cx - bw / 2; const by = rowY + (rowH - bh) / 2;
+        c.fillStyle = bg;
+        c.beginPath(); c.roundRect(bx, by, bw, bh, r); c.fill();
+        c.fillStyle = fg; c.textAlign = "center";
+        c.fillText(label, cx, rowY + rowH / 2 + 4);
+        c.textAlign = "left";
+        c.restore();
+      };
+
       // 講員 row (first)
       const spRowY = tableY + HDR_H;
       c.fillStyle = "#f0f4ff";
@@ -1990,18 +2015,8 @@ function ScheduleGridCard({ weekRows, scheduleByWeek, allMembers, canEdit, onUpd
       c.fillText("講員", tableX + 10, spRowY + SP_ROW_H / 2 + 4);
       weekRows.forEach(({ week }, wi) => {
         const sp = (scheduleByWeek[week.id] || []).find(a => a.role === "講員");
-        const cx = tableX + NAME_W + wi * COL_W + COL_W / 2;
-        if (sp?.memberName) {
-          c.font = `bold 11px ${FONT}`;
-          const tw = c.measureText(sp.memberName).width;
-          const bw = tw + 14; const bh = 20; const r = 10;
-          const bx = cx - bw / 2; const by = spRowY + (SP_ROW_H - bh) / 2;
-          c.fillStyle = "#dbeafe";
-          c.beginPath(); c.roundRect(bx, by, bw, bh, r); c.fill();
-          c.fillStyle = "#1e3a8a"; c.textAlign = "center";
-          c.fillText(sp.memberName, cx, spRowY + SP_ROW_H / 2 + 4);
-          c.textAlign = "left";
-        }
+        if (sp?.memberName)
+          drawPill(sp.memberName, tableX + NAME_W + wi * COL_W, spRowY, SP_ROW_H, "#dbeafe", "#1e3a8a");
       });
       c.strokeStyle = "#c7d2fe"; c.lineWidth = 0.5;
       c.beginPath();
@@ -2009,27 +2024,18 @@ function ScheduleGridCard({ weekRows, scheduleByWeek, allMembers, canEdit, onUpd
       c.lineTo(tableX + tableW, spRowY + SP_ROW_H);
       c.stroke();
 
-      // 練前讀經 row
+      // 練前預備 row
       const ppRowY = tableY + HDR_H + SP_ROW_H;
       c.fillStyle = "#fffde7";
       c.fillRect(tableX, ppRowY, tableW, PP_ROW_H);
       c.font = `bold 11px ${FONT}`;
       c.fillStyle = "#713f12";
-      c.fillText("練前讀經", tableX + 10, ppRowY + PP_ROW_H / 2 + 4);
+      c.fillText("練前預備", tableX + 10, ppRowY + PP_ROW_H / 2 + 4);
       weekRows.forEach(({ week }, wi) => {
-        const pp = (scheduleByWeek[week.id] || []).find(a => a.role === "練前讀經");
-        const cx = tableX + NAME_W + wi * COL_W + COL_W / 2;
+        const pp = (scheduleByWeek[week.id] || []).find(a => a.role === "練前預備");
         if (pp?.memberName && pp.memberName !== "—") {
-          const rc = RC["練前讀經"];
-          c.font = `bold 11px ${FONT}`;
-          const tw = c.measureText(pp.memberName).width;
-          const bw = tw + 14; const bh = 20; const r = 10;
-          const bx = cx - bw / 2; const by = ppRowY + (PP_ROW_H - bh) / 2;
-          c.fillStyle = rc.bg;
-          c.beginPath(); c.roundRect(bx, by, bw, bh, r); c.fill();
-          c.fillStyle = rc.fg; c.textAlign = "center";
-          c.fillText(pp.memberName, cx, ppRowY + PP_ROW_H / 2 + 4);
-          c.textAlign = "left";
+          const rc = RC["練前預備"];
+          drawPill(pp.memberName, tableX + NAME_W + wi * COL_W, ppRowY, PP_ROW_H, rc.bg, rc.fg);
         }
       });
       c.strokeStyle = "#e5ddd0"; c.lineWidth = 0.5;
@@ -2110,7 +2116,7 @@ function ScheduleGridCard({ weekRows, scheduleByWeek, allMembers, canEdit, onUpd
       // Outer border
       c.strokeStyle = "#c8bfaa";
       c.lineWidth = 1;
-      c.strokeRect(tableX, tableY, tableW, HDR_H + PP_ROW_H + allMembers.length * ROW_H);
+      c.strokeRect(tableX, tableY, tableW, HDR_H + SP_ROW_H + PP_ROW_H + allMembers.length * ROW_H);
 
       // Download
       await new Promise(resolve => canvas.toBlob(blob => {
@@ -2210,17 +2216,17 @@ function ScheduleGrid({ weekRows, scheduleByWeek, allMembers, canEdit, onUpdate,
           })}
         </tr>
 
-        {/* 練前讀經 special row */}
+        {/* 練前預備 special row */}
         <tr style={{ background:"#fffde7" }}>
           <td style={{ padding:"6px 12px", position:"sticky", left:0, background:"#fffde7", zIndex:1, whiteSpace:"nowrap", borderBottom:"1px solid #e9e0c8", boxShadow:"2px 0 4px rgba(0,0,0,0.06)" }}>
-            <div style={{ fontWeight:600, fontSize:12, color:"#713f12" }}>練前讀經</div>
+            <div style={{ fontWeight:600, fontSize:12, color:"#713f12" }}>練前預備</div>
           </td>
           {weekRows.map(({ week }) => {
-            const pp = (scheduleByWeek[week.id] || []).find(a => a.role === "練前讀經");
+            const pp = (scheduleByWeek[week.id] || []).find(a => a.role === "練前預備");
             const ppId = pp?.memberId || "";
             // Options: non-PPT scheduled members for this week
             const opts = (scheduleByWeek[week.id] || []).filter(a =>
-              a.memberId && a.memberName && a.memberName !== "—" && a.role !== "PPT" && a.role !== "練前讀經"
+              a.memberId && a.memberName && a.memberName !== "—" && a.role !== "PPT" && a.role !== "練前預備"
             );
             return (
               <td key={week.id} style={{ padding:"4px 5px", textAlign:"center", borderBottom:"1px solid #e9e0c8" }}>
@@ -2256,9 +2262,9 @@ function ScheduleGrid({ weekRows, scheduleByWeek, allMembers, canEdit, onUpdate,
               </td>
               {weekRows.map(({ week, avail }) => {
                 const isAvail   = avail.some(m => m.id === member.id);
-                // Exclude 練前讀經 from the main role cell — it's shown in the dedicated row above
-                const assigned  = (scheduleByWeek[week.id] || []).find(a => a.memberId === member.id && a.role !== "練前讀經");
-                const isPP      = (scheduleByWeek[week.id] || []).some(a => a.memberId === member.id && a.role === "練前讀經");
+                // Exclude 練前預備 from the main role cell — it's shown in the dedicated row above
+                const assigned  = (scheduleByWeek[week.id] || []).find(a => a.memberId === member.id && a.role !== "練前預備");
+                const isPP      = (scheduleByWeek[week.id] || []).some(a => a.memberId === member.id && a.role === "練前預備");
                 const role      = assigned?.role;
                 const rc        = role ? ROLE_COLORS[role] : null;
                 return (

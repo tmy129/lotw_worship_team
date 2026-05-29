@@ -513,7 +513,10 @@ function getSchedule(weekId) {
   // Use sheetToObjectsRaw (getDisplayValues) so weekId cells that Google Sheets
   // auto-converted to Date objects are still returned as their display string "yyyy-mm-dd".
   const wid = String(weekId).trim();
-  const rows = sheetToObjectsRaw(SHEETS.SCHEDULE).filter(s => s.weekId === wid);
+  // Normalize legacy role name so old sheet data keeps working
+  const rows = sheetToObjectsRaw(SHEETS.SCHEDULE)
+    .filter(s => s.weekId === wid)
+    .map(s => s.role === '練前讀經' ? { ...s, role: '練前預備' } : s);
 
   // Deduplicate:
   // - 主領 and 配唱 allow up to 2 people → key by role+memberId so both are kept.
@@ -546,10 +549,10 @@ function getMySchedule(memberId) {
   return result;
 }
 
-// Returns every 練前讀經 assignment across all weeks, keyed by memberId → latest weekId.
+// Returns every 練前預備 assignment across all weeks, keyed by memberId → latest weekId.
 // Used by the frontend to determine who is "due" to lead next.
 function getPrePracticeHistory() {
-  const rows = sheetToObjectsRaw(SHEETS.SCHEDULE).filter(s => s.role === "練前讀經");
+  const rows = sheetToObjectsRaw(SHEETS.SCHEDULE).filter(s => s.role === "練前預備" || s.role === "練前讀經");
 
   // Step 1: deduplicate per week — last row in the sheet wins (same logic as getSchedule).
   // This prevents a stale row from a previous AI run (different member, same week)
