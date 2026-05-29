@@ -1763,6 +1763,17 @@ function ScheduleView({ weeks, members, voteSettings, currentUser, showToast, ap
     setDirtyWeeks(d => new Set([...d, weekId]));
   };
 
+  const updateSpeaker = (weekId, name) => {
+    setScheduleByWeek(prev => {
+      const without = (prev[weekId] || []).filter(a => a.role !== "講員");
+      const updated = name.trim()
+        ? [...without, { role: "講員", memberId: "", memberName: name.trim() }]
+        : without;
+      return { ...prev, [weekId]: updated };
+    });
+    setDirtyWeeks(d => new Set([...d, weekId]));
+  };
+
   const updatePrePractice = (weekId, memberId, memberName) => {
     setScheduleByWeek(prev => {
       const without = (prev[weekId] || []).filter(a => a.role !== "練前讀經");
@@ -1864,7 +1875,7 @@ function ScheduleView({ weeks, members, voteSettings, currentUser, showToast, ap
             <ScheduleGridCard
               weekRows={weekRows} scheduleByWeek={scheduleByWeek}
               allMembers={allMembers} canEdit={canEdit} onUpdate={updateCell}
-              onUpdatePrePractice={updatePrePractice}
+              onUpdateSpeaker={updateSpeaker} onUpdatePrePractice={updatePrePractice}
               dirtyWeeks={dirtyWeeks} saving={saving} onSave={saveChanges}
               onSendCalendar={sendCalendar}
               monthLabel={batchSetting.months.map(m => MONTH_NAMES[m]).join("、")} />
@@ -1888,7 +1899,7 @@ function ScheduleView({ weeks, members, voteSettings, currentUser, showToast, ap
   );
 }
 
-function ScheduleGridCard({ weekRows, scheduleByWeek, allMembers, canEdit, onUpdate, onUpdatePrePractice, dirtyWeeks, saving, onSave, onSendCalendar, monthLabel }) {
+function ScheduleGridCard({ weekRows, scheduleByWeek, allMembers, canEdit, onUpdate, onUpdateSpeaker, onUpdatePrePractice, dirtyWeeks, saving, onSave, onSendCalendar, monthLabel }) {
   const [downloading, setDownloading] = useState(false);
 
   const downloadPng = async () => {
@@ -1915,10 +1926,11 @@ function ScheduleGridCard({ weekRows, scheduleByWeek, allMembers, canEdit, onUpd
         "PPT":      { bg:"#f1f5f9", fg:"#475569" },
         "練前讀經": { bg:"#fef9c3", fg:"#713f12" },
       };
+      const SP_ROW_H = 36; // height of the 講員 special row
       const PP_ROW_H = 36; // height of the 練前讀經 special row
 
       const W = PAD * 2 + NAME_W + weekRows.length * COL_W;
-      const H = PAD * 2 + TITLE_H + HDR_H + PP_ROW_H + allMembers.length * ROW_H;
+      const H = PAD * 2 + TITLE_H + HDR_H + SP_ROW_H + PP_ROW_H + allMembers.length * ROW_H;
 
       const canvas = document.createElement("canvas");
       canvas.width  = W * SCALE;
@@ -1969,8 +1981,36 @@ function ScheduleGridCard({ weekRows, scheduleByWeek, allMembers, canEdit, onUpd
       c.lineTo(tableX + tableW, tableY + HDR_H);
       c.stroke();
 
+      // 講員 row (first)
+      const spRowY = tableY + HDR_H;
+      c.fillStyle = "#f0f4ff";
+      c.fillRect(tableX, spRowY, tableW, SP_ROW_H);
+      c.font = `bold 11px ${FONT}`;
+      c.fillStyle = "#1e3a8a";
+      c.fillText("講員", tableX + 10, spRowY + SP_ROW_H / 2 + 4);
+      weekRows.forEach(({ week }, wi) => {
+        const sp = (scheduleByWeek[week.id] || []).find(a => a.role === "講員");
+        const cx = tableX + NAME_W + wi * COL_W + COL_W / 2;
+        if (sp?.memberName) {
+          c.font = `bold 11px ${FONT}`;
+          const tw = c.measureText(sp.memberName).width;
+          const bw = tw + 14; const bh = 20; const r = 10;
+          const bx = cx - bw / 2; const by = spRowY + (SP_ROW_H - bh) / 2;
+          c.fillStyle = "#dbeafe";
+          c.beginPath(); c.roundRect(bx, by, bw, bh, r); c.fill();
+          c.fillStyle = "#1e3a8a"; c.textAlign = "center";
+          c.fillText(sp.memberName, cx, spRowY + SP_ROW_H / 2 + 4);
+          c.textAlign = "left";
+        }
+      });
+      c.strokeStyle = "#c7d2fe"; c.lineWidth = 0.5;
+      c.beginPath();
+      c.moveTo(tableX, spRowY + SP_ROW_H);
+      c.lineTo(tableX + tableW, spRowY + SP_ROW_H);
+      c.stroke();
+
       // 練前讀經 row
-      const ppRowY = tableY + HDR_H;
+      const ppRowY = tableY + HDR_H + SP_ROW_H;
       c.fillStyle = "#fffde7";
       c.fillRect(tableX, ppRowY, tableW, PP_ROW_H);
       c.font = `bold 11px ${FONT}`;
@@ -1998,9 +2038,9 @@ function ScheduleGridCard({ weekRows, scheduleByWeek, allMembers, canEdit, onUpd
       c.lineTo(tableX + tableW, ppRowY + PP_ROW_H);
       c.stroke();
 
-      // Member rows (offset by PP_ROW_H)
+      // Member rows (offset by SP_ROW_H + PP_ROW_H)
       allMembers.forEach((member, mi) => {
-        const rowY  = tableY + HDR_H + PP_ROW_H + mi * ROW_H;
+        const rowY  = tableY + HDR_H + SP_ROW_H + PP_ROW_H + mi * ROW_H;
         const rowBg = mi % 2 === 0 ? "#ffffff" : "#f9f5ee";
 
         // Row background (week columns only — name column has its own solid bg)
@@ -2118,13 +2158,13 @@ function ScheduleGridCard({ weekRows, scheduleByWeek, allMembers, canEdit, onUpd
       <div style={{ overflowX:"auto" }}>
         <ScheduleGrid weekRows={weekRows} scheduleByWeek={scheduleByWeek}
           allMembers={allMembers} canEdit={canEdit} onUpdate={onUpdate}
-          onUpdatePrePractice={onUpdatePrePractice} />
+          onUpdateSpeaker={onUpdateSpeaker} onUpdatePrePractice={onUpdatePrePractice} />
       </div>
     </div>
   );
 }
 
-function ScheduleGrid({ weekRows, scheduleByWeek, allMembers, canEdit, onUpdate, onUpdatePrePractice }) {
+function ScheduleGrid({ weekRows, scheduleByWeek, allMembers, canEdit, onUpdate, onUpdateSpeaker, onUpdatePrePractice }) {
   return (
     <table style={{ borderCollapse:"collapse", minWidth:"100%", fontSize:12 }}>
       <thead>
@@ -2140,6 +2180,36 @@ function ScheduleGrid({ weekRows, scheduleByWeek, allMembers, canEdit, onUpdate,
         </tr>
       </thead>
       <tbody>
+        {/* 講員 special row — first */}
+        <tr style={{ background:"#eff6ff" }}>
+          <td style={{ padding:"6px 12px", position:"sticky", left:0, background:"#eff6ff", zIndex:1, whiteSpace:"nowrap", borderBottom:"1px solid #bfdbfe", boxShadow:"2px 0 4px rgba(0,0,0,0.06)" }}>
+            <div style={{ fontWeight:600, fontSize:12, color:"#1e3a8a" }}>講員</div>
+          </td>
+          {weekRows.map(({ week }) => {
+            const sp = (scheduleByWeek[week.id] || []).find(a => a.role === "講員");
+            return (
+              <td key={week.id} style={{ padding:"4px 5px", textAlign:"center", borderBottom:"1px solid #bfdbfe" }}>
+                {canEdit ? (
+                  <input
+                    value={sp?.memberName || ""}
+                    onChange={e => onUpdateSpeaker(week.id, e.target.value)}
+                    placeholder="輸入姓名"
+                    style={{ fontSize:11, border:"1px solid #93c5fd", borderRadius:4, padding:"2px 5px",
+                      background: sp?.memberName ? "#dbeafe" : "transparent",
+                      color: sp?.memberName ? "#1e3a8a" : "var(--text-3)",
+                      fontWeight: sp?.memberName ? 600 : 400, width:76, textAlign:"center" }}
+                  />
+                ) : sp?.memberName ? (
+                  <span style={{ display:"inline-block", padding:"2px 8px", borderRadius:10, fontSize:11,
+                    background:"#dbeafe", color:"#1e3a8a", fontWeight:600 }}>{sp.memberName}</span>
+                ) : (
+                  <span style={{ color:"var(--border)" }}>—</span>
+                )}
+              </td>
+            );
+          })}
+        </tr>
+
         {/* 練前讀經 special row */}
         <tr style={{ background:"#fffde7" }}>
           <td style={{ padding:"6px 12px", position:"sticky", left:0, background:"#fffde7", zIndex:1, whiteSpace:"nowrap", borderBottom:"1px solid #e9e0c8", boxShadow:"2px 0 4px rgba(0,0,0,0.06)" }}>
@@ -2234,6 +2304,7 @@ function ScheduleGrid({ weekRows, scheduleByWeek, allMembers, canEdit, onUpdate,
 // ── Songs ─────────────────────────────────────────────────────
 function SongsView({ week, weeks, weekIdx, setWeekIdx, songs, setSongs, schedule, currentUser, showToast, api, weekLoading }) {
   const leaderAssignments = schedule.filter(s => s.role === "主領");
+  const speakerEntry      = schedule.find(s => s.role === "講員");
   const isThisWeekLeader = leaderAssignments.some(s => s.memberId === currentUser.id);
   const canManage = currentUser.role === "admin" || currentUser.role === "leader" || isThisWeekLeader;
   const [saving, setSaving] = useState(false);
@@ -2291,6 +2362,14 @@ function SongsView({ week, weeks, weekIdx, setWeekIdx, songs, setSongs, schedule
         </div>
       </div>
       {weekLoading ? <SkelSongs /> : <>
+      {speakerEntry?.memberName && (
+        <div className="reminder" style={{ alignItems:"center", background:"#eff6ff", borderColor:"#93c5fd" }}>
+          <span className="reminder-icon">🙏</span>
+          <div style={{ fontSize:13, color:"#1e3a8a" }}>
+            本週講員：<strong>{speakerEntry.memberName}</strong>
+          </div>
+        </div>
+      )}
       {canManage && leaderAssignments.length > 0 && (
         <div className="reminder" style={{ alignItems:"center" }}>
           <span className="reminder-icon">🎤</span>
@@ -2386,6 +2465,7 @@ function MyScheduleView({ member, weeks, api, showToast, myScheduleData, setMySc
   const [selectedMonth, setSelectedMonth] = useState("");
   const [upcomingMap, setUpcomingMap]   = useState(myScheduleData || {}); // { weekId: roles[] }
   const [songsMap, setSongsMap]         = useState({}); // { weekId: songs[] }
+  const [speakersMap, setSpeakersMap]   = useState({}); // { weekId: speakerName }
   const [loadingSchedule, setLoadingSchedule] = useState(!Object.keys(myScheduleData || {}).length);
   const [loadingSongs, setLoadingSongs] = useState(false);
   const [expandedWeek, setExpandedWeek] = useState(null);
@@ -2423,9 +2503,13 @@ function MyScheduleView({ member, weeks, api, showToast, myScheduleData, setMySc
     [weeks, selectedMonth]
   );
 
-  // Load songs for all weeks in selected month — one batch call with fallback
+  // Load songs + speakers for the selected month
   useEffect(() => {
     if (!selectedMonth || !monthWeeks.length) return;
+    // Speakers — lightweight, no fallback needed
+    api("getSpeakersForMonth", { month: selectedMonth })
+      .then(sp => setSpeakersMap(prev => ({ ...prev, ...sp })))
+      .catch(() => {});
     setLoadingSongs(true);
     api("getSongsForMonth", { month: selectedMonth })
       .then(monthSongs => setSongsMap(prev => ({ ...prev, ...monthSongs })))
@@ -2492,6 +2576,7 @@ function MyScheduleView({ member, weeks, api, showToast, myScheduleData, setMySc
     const roles    = upcomingMap[w.id] || [];
     const isServing = roles.length > 0;
     const isLeader  = roles.includes("主領");
+    const speaker   = speakersMap[w.id] || "";
     const wSongs    = songsMap[w.id] || [];
     const hasSongs  = wSongs.some(s => s.name);
     const isExpanded = expandedWeek === w.id;
@@ -2518,6 +2603,13 @@ function MyScheduleView({ member, weeks, api, showToast, myScheduleData, setMySc
         </div>
 
         <div className="msc-bd">
+          {/* Speaker */}
+          {speaker && (
+            <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:10, padding:"6px 10px", background:"#eff6ff", borderRadius:8 }}>
+              <span style={{ fontSize:13 }}>🙏</span>
+              <span style={{ fontSize:12, color:"#1e3a8a" }}>講員：<strong>{speaker}</strong></span>
+            </div>
+          )}
           {/* Songs section */}
           <div>
             <div style={{ fontSize:11, fontWeight:600, color:"var(--text-3)", marginBottom:6 }}>本週詩歌</div>

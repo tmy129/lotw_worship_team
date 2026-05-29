@@ -92,7 +92,8 @@ function route(e) {
 
   const handlers = {
     getInitialData:    () => getInitialData(params),
-    getSongsForMonth:  () => getSongsForMonth(params),
+    getSongsForMonth:    () => getSongsForMonth(params),
+    getSpeakersForMonth: () => getSpeakersForMonth(params),
     getMembers:        getMembers,
     saveMember:        () => saveMember(body),
     deleteMember:      () => deleteMember(body.id),
@@ -262,6 +263,21 @@ function getSongsForMonth(params) {
       .filter(s => normalizeWeekId(s.weekId) === wid)
       .sort((a, b) => Number(a.slot) - Number(b.slot))
       .map(s => ({ ...s, youtube: s.youtube || '' }));
+  }
+  return result;
+}
+
+// Returns { weekId: speakerName } for all weeks in a month
+function getSpeakersForMonth(params) {
+  const { month } = params || {};
+  if (!month) return {};
+  const weekIds = getWeeks().filter(w => w.id.startsWith(month)).map(w => w.id);
+  const allSchedule = sheetToObjectsRaw(SHEETS.SCHEDULE);
+  const result = {};
+  for (const wid of weekIds) {
+    const rows = allSchedule.filter(s => normalizeWeekId(s.weekId) === wid && s.role === '講員');
+    const last = rows[rows.length - 1]; // last row wins (dedup guard)
+    if (last?.memberName) result[wid] = last.memberName;
   }
   return result;
 }
@@ -569,18 +585,49 @@ function confirmSchedule(body) {
   const { weekId } = body;
   const wid = String(weekId).trim();
   const schedule = getSchedule(wid);
-  const weeks = getWeeks();
-  const week = weeks.find(w => w.id === wid);
-  const members = getMembers();
-  const sh = SS.getSheetByName(SHEETS.SCHEDULE);
+  const weeks    = getWeeks();
+  const week     = weeks.find(w => w.id === wid);
+  const members  = getMembers();
+
+  // Mark confirmedAt in Schedule sheet
+  const sh  = SS.getSheetByName(SHEETS.SCHEDULE);
   const all = sh.getDataRange().getDisplayValues();
   for (let i = 1; i < all.length; i++) {
-    if (all[i][0].trim() === wid) sh.getRange(i + 1, 6).setValue(new Date()); // col 6 = confirmedAt
+    if (all[i][0].trim() === wid) sh.getRange(i + 1, 6).setValue(new Date());
   }
+
+  // Create calendar events
   const calendarResults = createCalendarEvents(week, schedule, members);
+
+  // Mark week as confirmed
   const wFound = findRowById(SHEETS.WEEKS, wid);
   if (wFound) SS.getSheetByName(SHEETS.WEEKS).getRange(wFound.rowIdx, 5).setValue('confirmed');
-  return { confirmed: true, calendarEvents: calendarResults };
+
+  // Send LINE notification to all serving members
+  const speaker = (schedule.find(s => s.role === '講員') || {}).memberName || '';
+  const teamLines = schedule
+    .filter(s => s.role !== '講員')
+    .map(s => `  ${s.role}：${s.memberName}`)
+    .join('\n');
+  const msg = [
+    `【服事排班確認】${week?.label || wid}`,
+    '',
+    ...(speaker ? [`🎤 講員：${speaker}`, ''] : []),
+    '🎵 本週服事名單：',
+    teamLines,
+    '',
+    '排班已確認，請留意行事曆邀請。',
+  ].join('\n');
+
+  let notified = 0;
+  schedule.filter(s => s.role !== '講員').forEach(s => {
+    const m = members.find(m => m.id === s.memberId || m.name === s.memberName);
+    if (!m?.lineUserId) return;
+    try { sendLineMessage(m.lineUserId, msg); notified++; }
+    catch(e) { Logger.log('confirmSchedule LINE notify failed: ' + m.name); }
+  });
+
+  return { confirmed: true, calendarEvents: calendarResults, lineNotified: notified };
 }
 
 function createCalendarEvents(week, schedule, members) {
@@ -675,7 +722,9 @@ function sendScheduleCalendar(body) {
   const serviceEnd    = new Date(serviceDate);  serviceEnd.setHours(12,  0, 0, 0);
 
   const location = '世界之光浸信會，10491臺北市中山區中山北路一段121巷32號';
-  const roster   = schedule.map(s => `  ${s.role}：${s.memberName}`).join('\n');
+  const speaker  = (schedule.find(s => s.role === '講員') || {}).memberName || '';
+  const roster   = (speaker ? `  講員：${speaker}\n` : '') +
+    schedule.filter(s => s.role !== '講員').map(s => `  ${s.role}：${s.memberName}`).join('\n');
 
   // Build member → roles map for this week
   const memberRoles = new Map();
@@ -723,11 +772,14 @@ function sendScheduleCalendar(body) {
 }
 
 function buildEventDescription(week, schedule, type) {
+  const speaker = (schedule.find(s => s.role === '講員') || {}).memberName || '';
+  const team    = schedule.filter(s => s.role !== '講員');
   return [
     type === 'practice' ? '【週四練習】' : '【週六主日敬拜服事】',
     `📅 ${week.label}`, '',
+    ...(speaker ? [`🎤 講員：${speaker}`, ''] : []),
     '🎵 本週服事名單：',
-    ...schedule.map(s => `  ${s.role}：${s.memberName}`),
+    ...team.map(s => `  ${s.role}：${s.memberName}`),
     '', type === 'practice' ? '請準時出席，若有狀況請提前告知管理員。' : '請提前30分鐘到場準備，感謝你的服事！',
   ].join('\n');
 }
