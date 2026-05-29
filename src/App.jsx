@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import "./App.css";
 
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwIbxfAmwNABD6oz1k3KGcJmXY7gIrkcVTCIMz353XSl3V6anrC1VsKEosM-5lWd4CO2Q/exec";
+const APPS_SCRIPT_URL = import.meta.env.VITE_GAS_URL;
+const APP_SECRET      = import.meta.env.VITE_APP_SECRET || "";
 
 const LINE_CHANNEL_ID   = "2009964527"; // 填入你的 LINE Channel ID
 const LINE_REDIRECT_URI = "https://tmy129.github.io/lotw_worship_team/";
@@ -35,13 +36,13 @@ async function api(action, params = {}, body = null) {
   if (body !== null) {
     const res = await fetch(APPS_SCRIPT_URL, {
       method: "POST",
-      body: JSON.stringify({ action, ...body }),
+      body: JSON.stringify({ action, secret: APP_SECRET, ...body }),
     });
     const data = await res.json();
     if (!data.ok) throw new Error(data.error);
     return data.data;
   } else {
-    const qs = new URLSearchParams({ action, ...params }).toString();
+    const qs = new URLSearchParams({ action, secret: APP_SECRET, ...params }).toString();
     const res = await fetch(`${APPS_SCRIPT_URL}?${qs}`);
     const data = await res.json();
     if (!data.ok) throw new Error(data.error);

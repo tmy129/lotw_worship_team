@@ -32,10 +32,21 @@ const SHEETS = {
   VOTE_SETTINGS: 'VoteSettings',
 };
 
+// ── Auth ─────────────────────────────────────────────────────
+function checkSecret(e) {
+  const expected = PropertiesService.getScriptProperties().getProperty('APP_SECRET');
+  if (!expected) return; // not configured yet — allow all (migration grace period)
+  const params  = e.parameter || {};
+  const body    = (() => { try { return JSON.parse(e.postData?.contents || '{}'); } catch { return {}; } })();
+  const provided = params.secret || body.secret;
+  if (provided !== expected) throw new Error('Unauthorized');
+}
+
 // ── Router ───────────────────────────────────────────────────
-function doGet(e)  { return route(e); }
+function doGet(e)  { try { checkSecret(e); } catch(ex) { return err(ex.message); } return route(e); }
 function doPost(e) {
   try {
+    checkSecret(e);
     const payload = JSON.parse(e.postData.contents);
     const action = payload.action;
 
@@ -488,13 +499,20 @@ function getSchedule(weekId) {
   const wid = String(weekId).trim();
   const rows = sheetToObjectsRaw(SHEETS.SCHEDULE).filter(s => s.weekId === wid);
 
-  // Deduplicate by role — last row wins.
-  // saveSchedule appends rows at the bottom after deleting old ones, so the last
-  // row for each role is always the most recently saved. This guards against any
-  // stale rows that survived before the getDisplayValues fix was deployed.
-  const byRole = {};
-  rows.forEach(row => { byRole[row.role] = row; });
-  return Object.values(byRole);
+  // Deduplicate:
+  // - 主領 and 配唱 allow up to 2 people → key by role+memberId so both are kept.
+  // - All other roles are one-per-role → key by role alone (last row wins).
+  // saveSchedule deletes all rows for a week before re-appending, so stale rows
+  // only accumulate if a manual sheet edit left orphan data.
+  const MULTI_ROLES = ['主領', '配唱'];
+  const byKey = {};
+  rows.forEach(row => {
+    const key = MULTI_ROLES.includes(row.role)
+      ? row.role + '|' + (row.memberId || row.memberName)
+      : row.role;
+    byKey[key] = row;
+  });
+  return Object.values(byKey);
 }
 
 // Returns all weeks where this member is assigned, with their roles.
