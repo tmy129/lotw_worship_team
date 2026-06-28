@@ -1522,6 +1522,8 @@ function VoteView({ voteSettings, currentUser, weeks, showToast, api }) {
           </div>
         </div>
       ))}
+      {/* Spacer so the sticky save button never overlaps the last card */}
+      {!isClosed && <div style={{ height: 88 }} />}
       </>}
 
       {!isClosed && !loadingVotes && (
