@@ -291,7 +291,7 @@ function _getMembers() {
     .filter(m => m.active !== false && m.active !== 'FALSE')
     .map(m => ({
       ...m,
-      instruments: String(m.instruments).split(','),
+      instruments: String(m.instruments).split(',').filter(Boolean),
       canPPT: m.canPPT === true || m.canPPT === 'TRUE',
     }));
 }
@@ -1026,8 +1026,21 @@ function migrateAddLineUserId() {
 }
 
 function handleRunAISchedule(payload) {
-  const apiKey = PropertiesService.getScriptProperties().getProperty("GROQ_API_KEY");
+  const props  = PropertiesService.getScriptProperties();
+  const apiKey = props.getProperty("GROQ_API_KEY");
   if (!apiKey) throw new Error("GROQ_API_KEY not set in Script Properties");
+  // Set GROQ_MODEL in Script Properties to swap models without redeploying
+  // (Groq decommissioned llama-3.3-70b-versatile on 2026-08-16).
+  const model = props.getProperty("GROQ_MODEL") || "openai/gpt-oss-120b";
+
+  // Groq counts prompt + max_completion_tokens against the per-minute token limit,
+  // so the output budget has to be derived from the prompt size or the request is
+  // rejected outright ("Request too large ... TPM"). Free tier is 8000 TPM.
+  // Measured ratio on our Chinese-heavy prompts: ~1.6 chars per token.
+  const prompt        = String(payload.prompt || "");
+  const tpmBudget     = Number(props.getProperty("GROQ_TPM_BUDGET") || 8000);
+  const estPromptToks = Math.ceil(prompt.length / 1.6);
+  const maxOutput     = Math.max(1024, Math.min(8192, tpmBudget - estPromptToks - 200));
 
   const response = UrlFetchApp.fetch(
     "https://api.groq.com/openai/v1/chat/completions",
@@ -1036,16 +1049,34 @@ function handleRunAISchedule(payload) {
       contentType: "application/json",
       headers: { "Authorization": "Bearer " + apiKey },
       payload: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
-        messages: [{ role: "user", content: payload.prompt }],
-        max_tokens: 4000,
+        model,
+        messages: [{ role: "user", content: prompt }],
+        // gpt-oss is a reasoning model: reasoning tokens also come out of this budget,
+        // and include_reasoning:false keeps the chain-of-thought out of the response.
+        max_completion_tokens: maxOutput,
+        reasoning_effort: "low",
+        include_reasoning: false,
         temperature: 0.3,
       }),
       muteHttpExceptions: true,
     }
   );
 
-  const data = JSON.parse(response.getContentText());
+  const status = response.getResponseCode();
+  const text   = response.getContentText();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch (e) {
+    throw new Error("Groq 回應非 JSON（HTTP " + status + "）：" + text.slice(0, 300));
+  }
   if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
-  return data.choices?.[0]?.message?.content || "";
+  if (status < 200 || status >= 300) throw new Error("Groq HTTP " + status + "：" + text.slice(0, 300));
+
+  const choice  = data.choices?.[0];
+  const content = choice?.message?.content || "";
+  if (!content.trim()) {
+    throw new Error("AI 沒有回傳內容（model: " + model + "，finish_reason: " + (choice?.finish_reason || "unknown") + "，輸出額度: " + maxOutput + "）");
+  }
+  return content;
 }

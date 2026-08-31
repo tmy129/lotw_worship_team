@@ -1199,6 +1199,7 @@ function BatchSchedulePanel({ setting, weeks, members, api, showToast, onClose, 
       const prompt  = fillBatchPrompt(weekRows, aiNote);
       const text    = await api("runAISchedule", {}, { prompt });
       const parsed  = assignPrePractice(enforcePPT(enforceConsecutive(enforceMonthlyLimits(parseBatchResponse(text, weekRows), weekRows), weekRows), weekRows), practiceHistory);
+      if (!parsed.length) throw new Error("AI 回應無法解析：" + String(text).slice(0, 200));
       const results = settingWeeks.map(w => {
         const found = parsed.find(p => p.week.id === w.id);
         return found
@@ -1729,6 +1730,7 @@ function ScheduleView({ weeks, members, voteSettings, currentUser, showToast, ap
         enforcePPT(enforceConsecutive(enforceMonthlyLimits(parseBatchResponse(text, weekRows), weekRows), weekRows), weekRows),
         practiceHistory
       );
+      if (!parsed.length) throw new Error("AI 回應無法解析：" + String(text).slice(0, 200));
       const byWeek = { ...scheduleByWeek };
       for (const { week: w, assignments } of parsed) {
         await api("saveSchedule", {}, { weekId: w.id, assignments });
