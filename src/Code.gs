@@ -921,6 +921,15 @@ function sendSongReminder(body) {
 // 每週四自動檢查：若主領尚未提交第三首歌則發提醒
 // 設定方式：在 Apps Script 編輯器執行一次 installSongReminderTrigger()
 function autoSongReminderCheck() {
+  // Disabled on 2026-09-06: the Cloudflare Worker now runs this check on its own
+  // cron, and the sheet this function reads is a frozen archive. Leaving the
+  // trigger installed but inert avoids a duplicate reminder to every 主領 while
+  // the Apps Script backend is kept as a rollback path. Delete the trigger with
+  // removeSongReminderTrigger(); if this backend is ever restored, remove this
+  // guard first.
+  Logger.log('autoSongReminderCheck skipped — reminders are sent by the Worker');
+  return { skipped: true, reason: 'moved to the Cloudflare Worker' };
+
   const today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
   const weeks = getWeeks();
   for (const week of weeks) {
@@ -934,6 +943,16 @@ function autoSongReminderCheck() {
       try { sendSongReminder({ weekId: week.id }); } catch(e) { Logger.log(e.message); }
     }
   }
+}
+
+// Run once in the Apps Script editor to delete the weekly reminder trigger.
+// The Worker's cron replaced it; the guard in autoSongReminderCheck already
+// makes it inert, so this only tidies up.
+function removeSongReminderTrigger() {
+  const removed = ScriptApp.getProjectTriggers()
+    .filter(t => t.getHandlerFunction() === 'autoSongReminderCheck');
+  removed.forEach(t => ScriptApp.deleteTrigger(t));
+  return `Deleted ${removed.length} trigger(s) for autoSongReminderCheck`;
 }
 
 // 執行一次以安裝每週四自動提醒觸發器
