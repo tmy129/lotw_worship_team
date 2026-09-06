@@ -622,7 +622,20 @@ function viewToHash(view) { return "#/" + view.toLowerCase(); }
 export default function App() {
   const SESSION_KEY = "lotw_user";
   const [currentUser, setCurrentUser]   = useState(() => {
-    try { const s = localStorage.getItem("lotw_user"); return s ? JSON.parse(s) : null; } catch { return null; }
+    try {
+      const s = localStorage.getItem(SESSION_KEY);
+      if (!s) return null;
+      const user = JSON.parse(s);
+      // Members used to be keyed by email address and are now keyed by the
+      // church record's person id. A session saved before that switch would
+      // send an email where an id is expected, so it is dropped and the member
+      // signs in again — LINE makes that a single tap.
+      if (!/^[0-9a-f-]{36}$/i.test(String(user?.id ?? ""))) {
+        localStorage.removeItem(SESSION_KEY);
+        return null;
+      }
+      return user;
+    } catch { return null; }
   });
   // Persist login across page reloads
   const saveUser = useCallback((user) => {
@@ -1539,68 +1552,58 @@ function VoteView({ voteSettings, currentUser, weeks, showToast, api }) {
 }
 
 // ── Members ───────────────────────────────────────────────────
+const MGMT_MEMBERS_URL = "https://lotw-mgmt.tmy129.workers.dev/admin/members";
+
+// Church-record attributes — name of record, email, instruments, PPT eligibility
+// and team membership itself — are owned by the management system and shown here
+// read-only. Only the worship-specific attributes are editable.
 function MembersView({ members, setMembers, showToast, api }) {
   const [editTarget, setEditTarget] = useState(null);
-  const [form, setForm] = useState({ name:"", role:"member", instruments:[], email:"", constraints:"", canPPT:false });
+  const [form, setForm] = useState({ name:"", role:"member", constraints:"" });
 
-  const openAdd  = () => { setForm({ name:"", role:"member", instruments:[], email:"", constraints:"", canPPT:false }); setEditTarget("new"); };
-  const openEdit = m => { setForm({ ...m, instruments: Array.isArray(m.instruments)?m.instruments:m.instruments.split(",") }); setEditTarget(m.id); };
+  const openEdit = m => { setForm({ name:m.name, role:m.role, constraints:m.constraints || "" }); setEditTarget(m.id); };
 
   const save = async () => {
-    const payload = { ...form, id: editTarget==="new"?undefined:editTarget };
-    await api("saveMember",{},payload);
+    await api("saveMemberProfile", {}, { memberId: editTarget, ...form });
     setMembers(await api("getMembers"));
-    showToast(editTarget==="new"?"團員已新增！":"團員已更新！");
+    showToast("已更新");
     setEditTarget(null);
   };
-
-  const remove = async id => {
-    if (!confirm("確定移除？")) return;
-    await api("deleteMember",{},{ id });
-    setMembers(prev=>prev.filter(m=>m.id!==id));
-    showToast("已移除");
-  };
-
-  const toggleInstrument = inst =>
-    setForm(f => ({ ...f, instruments: f.instruments.includes(inst)?f.instruments.filter(i=>i!==inst):[...f.instruments,inst] }));
 
   return (
     <div>
       <div className="sec-hd">
         <div className="sec-h1">團員名單</div>
-        <button className="btn btn-sm btn-navy btn-pill" onClick={openAdd}>＋ 新增</button>
+        <a className="btn btn-sm btn-ghost btn-pill" href={MGMT_MEMBERS_URL} target="_blank" rel="noreferrer">
+          在會友系統管理 ↗
+        </a>
+      </div>
+
+      <div style={{ fontSize:12, color:"var(--text-3)", margin:"0 0 12px", lineHeight:1.6 }}>
+        姓名、Email、樂器與 PPT 資格由教會會友系統維護，加入或退出敬拜部也在那裡設定。
+        這裡可以調整排班用的暱稱、系統角色與排班限制。
       </div>
 
       {editTarget && (
         <div className="sov" onClick={() => setEditTarget(null)}>
           <div className="sheet" onClick={e => e.stopPropagation()}>
             <div className="sheet-handle" />
-            <div className="sheet-title">{editTarget==="new"?"新增":"編輯"}團員</div>
-            <div className="grid-2" style={{ marginBottom:12 }}>
-              <div className="fgrp" style={{ marginBottom:0 }}><label className="lbl">姓名</label><input className="inp" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} /></div>
-              <div className="fgrp" style={{ marginBottom:0 }}><label className="lbl">Email</label><input className="inp" value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))} /></div>
-            </div>
+            <div className="sheet-title">編輯排班設定</div>
             <div className="grid-2" style={{ marginBottom:12 }}>
               <div className="fgrp" style={{ marginBottom:0 }}>
-                <label className="lbl">角色</label>
+                <label className="lbl">暱稱（班表顯示）</label>
+                <input className="inp" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} />
+              </div>
+              <div className="fgrp" style={{ marginBottom:0 }}>
+                <label className="lbl">系統角色</label>
                 <select className="sel" value={form.role} onChange={e=>setForm(f=>({...f,role:e.target.value}))}>
                   <option value="member">團員</option><option value="leader">團長</option><option value="admin">管理員</option>
                 </select>
               </div>
-              <div className="fgrp" style={{ marginBottom:0 }}><label className="lbl">特殊條件</label><input className="inp" value={form.constraints} onChange={e=>setForm(f=>({...f,constraints:e.target.value}))} /></div>
             </div>
             <div className="fgrp">
-              <label className="lbl">擔任樂器/職責</label>
-              <div className="itag-row">{SKILL_INSTRUMENTS.map(inst=><button key={inst} className={`itag${form.instruments.includes(inst)?" on":""}`} onClick={()=>toggleInstrument(inst)}>{inst}</button>)}</div>
-            </div>
-            <div className="fgrp" style={{ marginBottom:8 }}>
-              <label className="lbl">PPT 操作</label>
-              <button
-                className={`itag${form.canPPT ? " on" : ""}`}
-                onClick={() => setForm(f => ({ ...f, canPPT: !f.canPPT }))}>
-                {form.canPPT ? "✓ 可擔任 PPT" : "不擔任 PPT"}
-              </button>
-              <span style={{ fontSize:11, color:"var(--text-3)", marginLeft:8 }}>排班時從可出席且未擔任其他角色的人中選擇</span>
+              <label className="lbl">排班限制</label>
+              <input className="inp" value={form.constraints} onChange={e=>setForm(f=>({...f,constraints:e.target.value}))} placeholder="例：不跟 Victoria 安排一起" />
             </div>
             <div style={{ display:"flex", gap:8, marginTop:8 }}>
               <button className="btn btn-ghost btn-pill" style={{ flex:1 }} onClick={()=>setEditTarget(null)}>取消</button>
@@ -1621,11 +1624,11 @@ function MembersView({ members, setMembers, showToast, api }) {
                 {m.canPPT && <span className="rpill" style={{ background:"var(--cream-md)", color:"var(--text-2)", border:"1px solid var(--border)" }}>PPT</span>}
               </div>
               <div className="mem-detail">{(Array.isArray(m.instruments)?m.instruments:[m.instruments]).join("、")}</div>
+              {m.constraints && m.constraints !== "無特殊限制" && (
+                <div className="mem-detail" style={{ color:"var(--text-3)" }}>⚠ {m.constraints}</div>
+              )}
             </div>
-            <div style={{ display:"flex", gap:6 }}>
-              <button className="btn btn-sm btn-ghost btn-pill" onClick={()=>openEdit(m)}>編輯</button>
-              <button className="btn btn-sm btn-danger btn-pill" onClick={()=>remove(m.id)}>移除</button>
-            </div>
+            <button className="btn btn-sm btn-ghost btn-pill" onClick={()=>openEdit(m)}>排班設定</button>
           </div>
         ))}
       </div>

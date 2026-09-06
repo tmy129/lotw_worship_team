@@ -1,0 +1,21 @@
+name = "worship-api"
+main = "src/index.ts"
+compatibility_date = "2026-09-05"
+# The Postgres driver needs Node built-ins (net, crypto) on workerd.
+compatibility_flags = ["nodejs_compat"]
+
+# Pooled connection to the shared Neon database that also backs lotw-mgmt.
+# Created with: wrangler hyperdrive create worship-db --connection-string=<direct Neon URL>
+# The credential lives in Cloudflare, not in this file — the id alone is not a secret.
+[[hyperdrive]]
+binding = "HYPERDRIVE"
+id = "2bf7985e824e43f3a42008e37981e60d"
+
+[vars]
+# The published SPA origin; every response carries it as allow-origin.
+ALLOWED_ORIGIN = "https://tmy129.github.io"
+
+# Thursday 09:00 Asia/Taipei is 01:00 UTC; the handler re-derives the local date
+# before deciding which weeks are due.
+[triggers]
+crons = ["0 1 * * 4"]
