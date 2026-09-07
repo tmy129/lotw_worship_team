@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import "./App.css";
+import { INSTRUMENTS, fillBatchPrompt, memberPlays, requestPlan } from "./lib/prompt";
 
 const APPS_SCRIPT_URL = import.meta.env.VITE_GAS_URL;
 const APP_SECRET      = import.meta.env.VITE_APP_SECRET || "";
@@ -57,19 +58,6 @@ const ROLES_MAP = {
   leader: { label:"團長",   cls:"rp-leader" },
   member: { label:"團員",   cls:"rp-member" },
 };
-
-const INSTRUMENTS = ["主領","配唱","鼓","鋼琴","Keyboard","吉他","BASS","PPT"];
-// PPT is a service role (not an instrument skill) — any available unscheduled member can fill it
-const SKILL_INSTRUMENTS = INSTRUMENTS.filter(r => r !== "PPT");
-
-// Case-insensitive check: does this member's instruments list include a given role?
-function memberPlays(member, role) {
-  const list = Array.isArray(member.instruments)
-    ? member.instruments
-    : String(member.instruments).split(",");
-  const roleLower = role.trim().toLowerCase();
-  return list.some(i => i.trim().toLowerCase() === roleLower);
-}
 
 const NAVS = {
   admin: [
@@ -208,169 +196,6 @@ function fillPrompt(template, { week, availableMembers, voteMap, requiredRoles, 
     .replace(/{prevSchedules}/g, prevNote);
 }
 
-function fillBatchPrompt(weekRows, note) {
-  // ── Per-week available member list ──
-  const weekBlocks = weekRows.map(({ week, avail }) => {
-    const lines = avail.map(m => {
-      const instruments = (Array.isArray(m.instruments) ? m.instruments : m.instruments.split(",")).join("、");
-      const constraint = m.constraints && m.constraints !== "無特殊限制" ? `  ⚠限制：${m.constraints}` : "";
-      return `  - ${m.name}（${instruments}）${constraint}`;
-    }).join("\n");
-    return `▶ ${week.label}\n${lines || "  （無人可出席）"}`;
-  }).join("\n\n");
-
-  // ── Instrument availability grid ──
-  // For every role, show who can play it and which weeks they're available.
-  // This lets the AI immediately see patterns like "Tammy only available weeks 1-2 for piano".
-  const colHeaders = weekRows.map(r => r.week.label.slice(5)); // "06-06"
-  const colW = Math.max(...colHeaders.map(h => h.length)) + 2;
-  const nameW = 10;
-
-  const instrGrid = SKILL_INSTRUMENTS.map(role => {
-    const playerMap = {}; // id -> { name, avail: [bool] }
-    weekRows.forEach(({ avail }, wi) => {
-      avail.forEach(m => {
-        if (!memberPlays(m, role)) return;
-        if (!playerMap[m.id]) playerMap[m.id] = { name: m.name, avail: new Array(weekRows.length).fill(false) };
-        playerMap[m.id].avail[wi] = true;
-      });
-    });
-    const players = Object.values(playerMap);
-    if (!players.length) return null;
-
-    const header = `  ${" ".repeat(nameW)}${colHeaders.map(h => h.padEnd(colW)).join("")}`;
-    const rows = players.map(p =>
-      `  ${p.name.padEnd(nameW)}${p.avail.map(a => (a ? "✓" : "✗").padEnd(colW)).join("")}`
-    );
-    return `${role}：\n${header}\n${rows.join("\n")}`;
-  }).filter(Boolean).join("\n\n");
-
-  // ── PPT candidates per week ──
-  const pptLines = weekRows.map(({ week, avail }) => {
-    const eligible = avail.filter(m => m.canPPT);
-    const names = eligible.length ? eligible.map(m => m.name).join("、") : "（無人設定可擔任 PPT）";
-    return `  ${week.label}：${names}`;
-  }).join("\n");
-
-  const period = weekRows.map(r => r.week.label).join("、");
-
-  return `你是教會敬拜團排班AI，請一次規劃以下 ${weekRows.length} 週的完整排班。
-
-【排班期間】${period}
-${note ? `【備注】${note}\n` : ""}【各樂器人員出席總覽】（✓可出席 ✗不可出席，排班前務必先看這裡！）
-${instrGrid}
-
-【PPT 候選人】（每週可選名單，從中選一位未擔任其他角色的人擔任 PPT）
-${pptLines}
-
-【各週完整可出席名單】
-${weekBlocks}
-
-【必要角色】主領、配唱、鋼琴、鼓
-【選填角色】Keyboard、吉他、BASS — 若該週可出席名單中有人會該樂器，務必安排；沒有才填「—」
-
-請依序執行以下步驟再回覆：
-
-步驟1｜掃描「各樂器人員出席總覽」
-逐一看每個樂器的格子，記下每位演奏者哪幾週有 ✓ 可出席。
-特別留意：若某人某樂器只有部分週次 ✓，那幾週他就是唯一選擇，必須優先排定。
-
-步驟2｜檢查限制
-若團員有「⚠限制」欄位，嚴格遵守（例：只能配唱、不可主領、當日有事只能某時段等），違反限制的安排一律不採用。
-
-步驟3｜分配角色（請依以下順序進行）
-① 先分配「鋼琴」：鋼琴手人數最少，最難調度，優先確保輪替平衡後再進行其他角色
-   → 對照總覽，某週若只有一人可彈鋼琴，先鎖定他/她；再把剩餘週次分給其他鋼琴手
-② 再分配「鼓」：同理，找出只有一人可打鼓的週次優先鎖定
-③ 再分配「主領」
-④ 再分配「配唱」（可 1～2 人）
-⑤ 再分配「Keyboard」「吉他」「BASS」（有人會才填，否則填「—」）
-⑥ 最後從「PPT 候選人」中選一位當週尚未擔任其他角色的人擔任 PPT
-- 每人同一週只能擔任一個角色，不可重複出現
-- 主領、配唱、鋼琴、鼓 必須各安排一人，除非整個名單中真的找不到才填「—」
-
-步驟4｜平衡輪替（嚴格執行，不可違反）
-- 【鋼琴上限】同月份同一人擔任「鋼琴」不超過 2 次；若該月有五週則不超過 3 次
-- 【主領上限】同月份同一人擔任「主領」不超過 1 次；若該月有五週則不超過 2 次
-- 【主領禁止連週】主領不可與上一週相同，包含跨月（六月最後一週與七月第一週不可同一人）
-- 同一人不可連續出現三週（任何角色）；若某月有五週則該月同一人不超過 3 次
-- 近期頻繁出現的人優先休息
-
-步驟5｜自我檢查
-回覆前確認：
-① 必要角色（主領、配唱、鋼琴、鼓）皆已填人
-② 無重複姓名（同一週同一人只出現一次）
-③ 無違反⚠限制
-④ 主領、鋼琴未超過月份上限
-⑤ PPT 是當週候選人之一且未擔任其他角色
-⑥ 所有人名均來自該週的可出席名單，不捏造姓名
-
-請嚴格按照以下格式回覆，每週用 == 日期 == 標記，每個角色獨立一行，不可合併在同一行：
-
-${weekRows.map(r => `== ${r.week.label} ==
-REASON:（說明本週排班考量）
-主領:姓名
-配唱:姓名
-鼓:姓名
-鋼琴:姓名
-Keyboard:姓名或—
-吉他:姓名或—
-BASS:姓名或—
-PPT:姓名`).join("\n\n")}`;
-}
-
-function parseBatchResponse(text, weekRows) {
-  const dateKey = s => (s || "").replace(/[^0-9]/g, "");
-
-  // ── Primary: == label == section format ──
-  const sections = text.split(/==\s*(.+?)\s*==/);
-  if (sections.length > 2) {
-    const results = [];
-    const used = new Set();
-    for (let i = 1; i < sections.length; i += 2) {
-      const label    = sections[i].trim();
-      const body     = sections[i + 1] || "";
-      const labelKey = dateKey(label);
-      const row = weekRows.find(r =>
-        !used.has(r.week.id) && (
-          r.week.label === label || dateKey(r.week.label) === labelKey
-        )
-      );
-      if (!row) continue;
-      used.add(row.week.id);
-      results.push({ week: row.week, assignments: parseScheduleText(body, row.avail) });
-    }
-    if (results.length > 0) return results;
-  }
-
-  // ── Fallback: date-per-line + inline roles format ──
-  // e.g. "2026-06-06\n主領：Clare　配唱：Victoria　鼓：Jerry..."
-  const results = [];
-  const used = new Set();
-  const allLines = text.split("\n").map(l => l.trim()).filter(Boolean);
-
-  for (let i = 0; i < allLines.length; i++) {
-    const row = weekRows.find(r =>
-      !used.has(r.week.id) && dateKey(r.week.label) === dateKey(allLines[i])
-    );
-    if (!row) continue;
-
-    // Collect lines until the next date marker
-    const bodyLines = [];
-    let j = i + 1;
-    while (j < allLines.length && !weekRows.some(r => dateKey(r.week.label) === dateKey(allLines[j]))) {
-      // Inline roles may be separated by ideographic space (　) or tab — expand to one-per-line
-      allLines[j].split(/[　\t]/).forEach(seg => { if (seg.trim()) bodyLines.push(seg.trim()); });
-      j++;
-    }
-
-    used.add(row.week.id);
-    results.push({ week: row.week, assignments: parseScheduleText(bodyLines.join("\n"), row.avail) });
-    i = j - 1;
-  }
-
-  return results;
-}
 
 // Enforce monthly caps that the AI often ignores:
 //   鋼琴 ≤ 2/month (≤ 3 if 5-week month)
@@ -527,10 +352,17 @@ function enforceConsecutive(parsed, weekRows) {
 
 // Enforce PPT assignment: the assigned person must have canPPT=true and be in that week's avail.
 // If not, find a valid replacement from canPPT members who aren't already assigned another role.
+//
+// The planner is no longer asked for PPT — it is a service role, not something
+// the model schedules — so an absent slot is the normal case and is filled here
+// by the same rule that corrects a wrong one.
 function enforcePPT(parsed, weekRows) {
   for (const { week, assignments } of parsed) {
-    const pptIdx = assignments.findIndex(a => a.role === "PPT");
-    if (pptIdx === -1) continue;
+    let pptIdx = assignments.findIndex(a => a.role === "PPT");
+    if (pptIdx === -1) {
+      assignments.push({ role: "PPT", memberName: "—", memberId: "" });
+      pptIdx = assignments.length - 1;
+    }
 
     const weekRow = weekRows.find(r => r.week.id === week.id);
     if (!weekRow) continue;
@@ -577,42 +409,6 @@ function assignPrePractice(parsed, history) {
   return parsed;
 }
 
-function parseScheduleText(text, availableMembers) {
-  const lines = text.split("\n");
-  const usedIds = new Set(); // deduplicate by member ID
-
-  const resolveMember = raw =>
-    availableMembers.find(m => raw.includes(m.name) || m.name.includes(raw));
-
-  return INSTRUMENTS.map(role => {
-    const line = lines.find(l => l.startsWith(role + ":") || l.startsWith(role + "："));
-    let person = "—";
-    if (line) {
-      person = line.replace(/^[^:：]+[:：]/, "").trim()
-        .replace(/^[（(]/, "").replace(/[）)]$/, "").trim();
-    }
-    if (!person || person === "—") return { role, memberName: "—", memberId: "" };
-
-    // 配唱 can have two people
-    if (role === "配唱") {
-      const names = person.split(/[,，、／]/).map(n => n.trim()).filter(Boolean);
-      const resolved = names
-        .map(n => resolveMember(n))
-        .filter(m => m && !usedIds.has(m.id));
-      resolved.forEach(m => usedIds.add(m.id));
-      if (!resolved.length) return { role, memberName: "—", memberId: "" };
-      return { role, memberName: resolved.map(m => m.name).join("、"), memberId: resolved[0].id };
-    }
-
-    const member = resolveMember(person);
-    if (!member) return { role, memberName: person, memberId: "" };
-    if (usedIds.has(member.id)) return { role, memberName: "—", memberId: "" }; // duplicate — clear it
-    usedIds.add(member.id);
-    return { role, memberName: member.name, memberId: member.id };
-  });
-}
-
-const VIEW_IDS = ["mySchedule", "songs", "vote", "voteAdmin", "schedule", "members"];
 function hashToView(hash) {
   const slug = hash.replace(/^#\/?/, "").toLowerCase();
   return VIEW_IDS.find(id => id.toLowerCase() === slug) || null;
@@ -1209,10 +1005,8 @@ function BatchSchedulePanel({ setting, weeks, members, api, showToast, onClose, 
     try {
       const [histData] = await Promise.all([api("getPrePracticeHistory")]);
       const practiceHistory = histData || {};
-      const prompt  = fillBatchPrompt(weekRows, aiNote);
-      const text    = await api("runAISchedule", {}, { prompt });
-      const parsed  = assignPrePractice(enforcePPT(enforceConsecutive(enforceMonthlyLimits(parseBatchResponse(text, weekRows), weekRows), weekRows), weekRows), practiceHistory);
-      if (!parsed.length) throw new Error("AI 回應無法解析：" + String(text).slice(0, 200));
+      const plan    = await requestPlan({ weekRows, note: aiNote, send: req => api("runAISchedule", {}, req) });
+      const parsed  = assignPrePractice(enforcePPT(enforceConsecutive(enforceMonthlyLimits(plan, weekRows), weekRows), weekRows), practiceHistory);
       const results = settingWeeks.map(w => {
         const found = parsed.find(p => p.week.id === w.id);
         return found
@@ -1727,13 +1521,11 @@ function ScheduleView({ weeks, members, voteSettings, currentUser, showToast, ap
   const runBatch = async () => {
     setRunning(true);
     try {
-      const prompt = fillBatchPrompt(weekRows, aiNote);
-      const text   = await api("runAISchedule", {}, { prompt });
+      const plan   = await requestPlan({ weekRows, note: aiNote, send: req => api("runAISchedule", {}, req) });
       const parsed = assignPrePractice(
-        enforcePPT(enforceConsecutive(enforceMonthlyLimits(parseBatchResponse(text, weekRows), weekRows), weekRows), weekRows),
+        enforcePPT(enforceConsecutive(enforceMonthlyLimits(plan, weekRows), weekRows), weekRows),
         practiceHistory
       );
-      if (!parsed.length) throw new Error("AI 回應無法解析：" + String(text).slice(0, 200));
       const byWeek = { ...scheduleByWeek };
       for (const { week: w, assignments } of parsed) {
         await api("saveSchedule", {}, { weekId: w.id, assignments });

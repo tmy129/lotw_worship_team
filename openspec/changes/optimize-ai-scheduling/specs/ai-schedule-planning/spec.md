@@ -18,12 +18,36 @@ The scheduling prompt SHALL state a member's instruments once, state their avail
 
 ### Requirement: Prompt fits the per-minute token budget with headroom
 
-The prompt and the reserved completion together SHALL leave at least 1500 tokens of headroom against the configured per-minute token budget for a nine-week period. A tool SHALL report the measured size and headroom and SHALL exit non-zero when the headroom is below that threshold.
+The completion the proxy reserves for a nine-week period SHALL exceed what an answer needs by at least 1500 tokens. The reservation is whatever the per-minute budget leaves after the prompt, so the two always sum to the budget and the meaningful measure is the spare capacity above the answer's own requirement, taken as 2000 tokens — the plan itself plus the model's reasoning. A tool SHALL report the prompt size, the reservation and that spare capacity, and SHALL exit non-zero when it falls below the threshold.
 
 #### Scenario: Prompt grows past the threshold
 
-- **WHEN** the budget tool measures a prompt whose headroom is below 1500 tokens
-- **THEN** it reports the prompt size, the reserved output and the headroom, and exits non-zero
+- **WHEN** the budget tool measures a prompt whose spare capacity is below 1500 tokens
+- **THEN** it reports the prompt size, the reservation and the spare capacity, and exits non-zero
+
+##### Example: today's prompt against the free tier
+
+| Quantity | Value |
+| -------- | ----- |
+| per-minute budget | 8000 |
+| prompt | 7771 characters, 4857 tokens |
+| reserved for the answer | 2943 tokens |
+| an answer needs | 2000 tokens |
+| spare | 943 — below the threshold, so the tool exits non-zero |
+
+### Requirement: A period is planned one month at a time
+
+A request covering more than one calendar month SHALL be split into one request per month, each validated and corrected on its own, and the results assembled in week order. Rules that span a month boundary SHALL NOT be asked of the model; the enforcement passes apply them to the assembled plan.
+
+#### Scenario: Two-month period
+
+- **WHEN** a leader plans a period covering October and November
+- **THEN** two requests are made, each naming only that month's weeks and the people available in them, and the schedule that comes back covers every week of both months
+
+#### Scenario: One month fails
+
+- **WHEN** the first month plans successfully and the second cannot be made valid
+- **THEN** no schedule is presented, and the report names the month and its faults
 
 ### Requirement: The model answers with schema-valid JSON
 
@@ -36,12 +60,22 @@ The request SHALL ask for JSON matching a schema whose top level carries a list 
 
 ### Requirement: An invalid plan is rejected, never partially accepted
 
-The client SHALL validate a parsed plan before use: every requested week present exactly once, every role within the supplied vocabulary, every named member drawn from that week's availability list, and no role carrying more members than it seats. A plan failing any of these SHALL be reported as an error naming the week and the reason, and MUST NOT be presented as a schedule.
+The client SHALL validate a parsed plan before use: every requested week present exactly once, every role within the supplied vocabulary, every named member drawn from that week's availability list, and no role carrying more members than it seats. Every fault in a plan SHALL be collected, not just the first. A plan that fails SHALL be sent back to the planner with those faults and a request to correct them, for one correction attempt; when neither validates, the faults from the last attempt SHALL be reported and no schedule presented. A further attempt SHALL NOT be made, because the per-minute token budget holds exactly two calls and a third would be refused rather than answered.
 
 #### Scenario: Truncated answer
 
-- **WHEN** the model's answer covers fewer weeks than were requested
+- **WHEN** the model's answer covers fewer weeks than were requested and repeated attempts do not fix it
 - **THEN** the client reports which weeks are missing and presents no schedule
+
+#### Scenario: A fault the planner can fix
+
+- **WHEN** an answer assigns one unavailable member and the next attempt, given that fault, returns a plan with none
+- **THEN** the corrected plan is used and the leader sees a schedule rather than an error
+
+#### Scenario: Rate limit during the loop
+
+- **WHEN** the per-minute token limit is reached partway through the attempts
+- **THEN** the loop stops and reports the upstream message rather than retrying against a limit that has not reset
 
 #### Scenario: Unavailable member assigned
 
@@ -65,7 +99,12 @@ The role vocabulary SHALL be derived from the instruments the roster reports, ex
 #### Scenario: Service roles withheld
 
 - **WHEN** the roster reports members holding PPT or 練前預備
-- **THEN** neither appears in the role vocabulary sent to the model
+- **THEN** neither appears in the role vocabulary sent to the model, and the prompt does not ask for either
+
+#### Scenario: PPT filled after the answer
+
+- **WHEN** a validated plan carries no PPT for a week
+- **THEN** the eligibility pass assigns someone available that week who may operate PPT and holds no other role that week, or records that nobody qualifies
 
 ### Requirement: No output is requested that nothing reads
 
