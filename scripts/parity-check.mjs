@@ -150,8 +150,22 @@ const callJson = async (url, attempts = 3) => {
   }
 };
 
+// The sheet backend must be named explicitly. VITE_GAS_URL points at whichever
+// backend the app currently uses, and once the app was cut over to the Worker
+// that made this script compare the Worker with itself — which passes, and
+// means nothing.
+const SHEET = arg("--sheet", process.env.SHEET_URL);
+if (!SHEET) {
+  console.error("Pass --sheet <Apps Script exec URL> (or set SHEET_URL). It must not be the Worker.");
+  process.exit(1);
+}
+if (SHEET === WORKER) {
+  console.error("--sheet and --worker are the same URL; there is nothing to compare.");
+  process.exit(1);
+}
+
 const callSheet = (action, params) =>
-  callJson(`${env.VITE_GAS_URL}?${new URLSearchParams({ action, secret: env.VITE_APP_SECRET, ...params })}`);
+  callJson(`${SHEET}?${new URLSearchParams({ action, secret: env.VITE_APP_SECRET, ...params })}`);
 const callWorker = (action, params) =>
   callJson(`${WORKER}/?${new URLSearchParams({ action, secret: env.VITE_APP_SECRET, ...params })}`);
 
