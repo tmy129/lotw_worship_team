@@ -409,6 +409,8 @@ function assignPrePractice(parsed, history) {
   return parsed;
 }
 
+const VIEW_IDS = ["mySchedule", "songs", "vote", "voteAdmin", "schedule", "members"];
+
 function hashToView(hash) {
   const slug = hash.replace(/^#\/?/, "").toLowerCase();
   return VIEW_IDS.find(id => id.toLowerCase() === slug) || null;
