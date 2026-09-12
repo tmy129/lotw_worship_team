@@ -31,6 +31,10 @@ jobs:
         env:
           VITE_GAS_URL: ${{ secrets.VITE_GAS_URL }}
           VITE_APP_SECRET: ${{ secrets.VITE_APP_SECRET }}
+          # The LIFF app id for the LINE portal page (dist/liff.html). Not a
+          # secret — it is visible in the published page — but kept alongside the
+          # others so one place configures the build.
+          VITE_LIFF_ID: ${{ secrets.VITE_LIFF_ID }}
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

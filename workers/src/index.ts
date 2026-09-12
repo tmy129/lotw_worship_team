@@ -1,6 +1,7 @@
 import { secretMatches } from "./auth";
 import { runAISchedule } from "./actions/ai";
-import { loginWithLine } from "./actions/line";
+import { loginWithLine, verifyLiffIdToken } from "./actions/line";
+import { getPortalData } from "./actions/portal";
 import { notifyLeaderSongs, notifyScheduleConfirmed, publishSongs, sendSongReminder, weeksDueOn } from "./actions/notify";
 import { bindLineUser, getMembers, saveMemberProfile } from "./actions/directory";
 import { confirmSchedule, getMySchedule, getPrePracticeHistory, getSchedule, saveSchedule } from "./actions/schedule";
@@ -46,6 +47,14 @@ const READ_ACTIONS: Record<string, Handler> = {
   getWeeksByMonths: async (params, env) => withDb(env, c => getWeeksByMonths(c, params.months)),
   getVoteSettings: async (_params, env) => withDb(env, getVoteSettings),
   loginWithLine: async (params, env) => withDb(env, c => loginWithLine(c, params, env)),
+  // The token is verified before a connection is opened, so a token the portal
+  // cannot prove fails without touching the database at all.
+  getPortalData: async (params, env) => {
+    const lineUserId = await verifyLiffIdToken(params.idToken, env);
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Taipei" });
+    return withDb(env, client => getPortalData(client, lineUserId, today));
+  },
+
   getMySchedule: async (params, env) => withDb(env, c => getMySchedule(c, params)),
   getVotes: async (params, env) => withDb(env, c => getVotes(c, params)),
   getVotesByMember: async (params, env) => withDb(env, c => getVotesByMember(c, params)),

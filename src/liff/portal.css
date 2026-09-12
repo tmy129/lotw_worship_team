@@ -1,0 +1,138 @@
+/* A rich-menu destination on a phone: one column, large touch targets, no chrome
+   the LINE in-app browser already provides. Deliberately independent of App.css,
+   which carries the whole administrative UI. */
+:root {
+  --ink: #1f2430;
+  --ink-soft: #6b7280;
+  --line: #e6e8ee;
+  --card: #ffffff;
+  --bg: #f6f7f9;
+  --accent: #2f6f4f;
+  --accent-soft: #e8f2ec;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.portal {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 20px 16px calc(32px + env(safe-area-inset-bottom));
+}
+
+.portal-head { margin-bottom: 18px; }
+.portal-title { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: 0.01em; }
+.portal-who { margin: 4px 0 0; color: var(--ink-soft); font-size: 14px; }
+
+.block {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 14px;
+}
+.block-title {
+  margin: 0 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  letter-spacing: 0.06em;
+}
+
+.mine { list-style: none; margin: 0; padding: 0; }
+.mine li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.mine li:last-child { border-bottom: 0; padding-bottom: 0; }
+.mine-week { font-weight: 600; font-size: 15px; }
+.mine-roles { color: var(--accent); font-size: 14px; text-align: right; }
+
+.empty { margin: 0; color: var(--ink-soft); font-size: 14px; line-height: 1.6; }
+
+.week { padding: 14px 0; border-bottom: 1px solid var(--line); }
+.week:first-of-type { padding-top: 0; }
+.week:last-child { border-bottom: 0; padding-bottom: 0; }
+.week-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.week-date { font-weight: 600; font-size: 15px; }
+.week-badge {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.week-speaker { margin: 6px 0 0; color: var(--ink-soft); font-size: 13px; }
+.week-pending { margin: 8px 0 0; color: var(--ink-soft); font-size: 13px; }
+
+.songs { margin: 8px 0 0; padding-left: 20px; }
+.songs li { padding: 3px 0; font-size: 15px; line-height: 1.5; }
+
+/* Buttons, not anchors: the LINE in-app browser needs liff.openWindow to leave
+   the webview, so every outbound link goes through one handler. */
+.song-link, .link-btn {
+  font: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--accent);
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.link-btn { margin-top: 12px; font-size: 14px; }
+
+.notice {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 20px 16px;
+}
+.notice p { margin: 0; font-size: 15px; line-height: 1.7; }
+.notice-sub { margin-top: 10px !important; color: var(--ink-soft); font-size: 13px; }
+
+.portal-foot { padding: 4px 4px 0; color: var(--ink-soft); font-size: 13px; }
+.portal-foot p { margin: 0; }
+
+.skeleton-title, .skeleton-card {
+  background: linear-gradient(90deg, #eceef2 25%, #f4f5f8 50%, #eceef2 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.3s ease-in-out infinite;
+  border-radius: 12px;
+}
+.skeleton-title { height: 26px; width: 40%; margin-bottom: 18px; }
+.skeleton-card { height: 120px; margin-bottom: 14px; }
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #e8eaf0;
+    --ink-soft: #9aa3b2;
+    --line: #2c313c;
+    --card: #1b1f27;
+    --bg: #12151b;
+    --accent: #7fd3a5;
+    --accent-soft: #1e3329;
+  }
+  .skeleton-title, .skeleton-card {
+    background: linear-gradient(90deg, #1f242d 25%, #262c36 50%, #1f242d 75%);
+    background-size: 200% 100%;
+  }
+}

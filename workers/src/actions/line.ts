@@ -5,6 +5,7 @@ import { toMember, type Member } from "./directory";
 
 const TOKEN_URL = "https://api.line.me/oauth2/v2.1/token";
 const PROFILE_URL = "https://api.line.me/v2/profile";
+const VERIFY_URL = "https://api.line.me/oauth2/v2.1/verify";
 
 export type LoginResult = {
   lineUserId: string;
@@ -22,6 +23,37 @@ export async function memberForLineUser(client: Client, lineUserId: string): Pro
   if (!bound.rows.length) return null;
   const { rows } = await client.query(ROSTER_QUERY_BY_PERSON, [bound.rows[0].person_id]);
   return rows.length ? toMember(rows[0]) : null;
+}
+
+/**
+ * The LINE user id behind a LIFF ID token, as LINE itself attests it.
+ *
+ * The portal's page is public and every action here is gated only by a shared
+ * secret compiled into that public bundle, so a caller-supplied LINE user id
+ * would let anyone holding the secret read anyone's schedule. LINE verifies the
+ * signature and that the token was issued for this channel; the subject it
+ * returns is what identifies the viewer.
+ *
+ * Throws on an absent, malformed, expired, or wrong-channel token rather than
+ * falling back to an anonymous view — a token that never verifies means the LIFF
+ * app is misconfigured, and a page that still renders would hide that.
+ */
+export async function verifyLiffIdToken(token: unknown, env: Env): Promise<string> {
+  if (!env.LINE_CHANNEL_ID) throw new Error("LINE_CHANNEL_ID is not configured");
+  const idToken = typeof token === "string" ? token.trim() : "";
+  if (!idToken) throw new Error("ID token is missing: the portal must send its LIFF ID token");
+
+  const res = await fetch(VERIFY_URL, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ id_token: idToken, client_id: env.LINE_CHANNEL_ID }),
+  });
+  const payload: any = await res.json().catch(() => ({}));
+  if (!res.ok || !payload.sub) {
+    const detail = payload.error_description || payload.error || `HTTP ${res.status}`;
+    throw new Error(`ID token rejected by LINE: ${detail}`);
+  }
+  return String(payload.sub);
 }
 
 /**
@@ -123,6 +155,54 @@ export async function servingMembers(
        left join worship_member_profiles mp on mp.person_id = p.id
        left join worship_line_identities li on li.person_id = p.id
       where s.week_id = $1::date and s.role <> '講員'`,
+    [weekId],
+  );
+  return rows;
+}
+
+/**
+ * Who the weekly song announcement goes to: the week's roster plus the active
+ * members of every team recorded as a song audience.
+ *
+ * 影音組 serve every service without holding a 敬拜部 position, so they appear in
+ * no week's schedule; the audience table is what addresses them. Recipients are
+ * de-duplicated by person, so somebody who is both serving and in an audience
+ * team is messaged once. Team membership is read here rather than copied, so a
+ * person who leaves the team stops receiving announcements without any action.
+ *
+ * The roster half deliberately does not filter on p.active — that would change
+ * who an existing week's announcement reaches. Only the audience half does.
+ */
+export async function songAnnouncementRecipients(
+  client: Client,
+  weekId: string,
+): Promise<{ name: string; lineUserId: string }[]> {
+  const { rows } = await client.query(
+    `with roster as (
+       select s.person_id
+         from worship_schedule s
+        where s.week_id = $1::date
+          and s.role <> '講員'
+          and s.person_id is not null
+     ),
+     audience as (
+       select tm.person_id
+         from worship_song_audience_teams a
+         join team_members tm on tm.team_id = a.team_id and tm.active
+         join persons ap on ap.id = tm.person_id and ap.active
+     ),
+     recipients as (
+       select person_id from roster
+       union
+       select person_id from audience
+     )
+     select coalesce(mp.display_name, p.name) as name,
+            coalesce(li.line_user_id, '') as "lineUserId"
+       from recipients r
+       join persons p on p.id = r.person_id
+       left join worship_member_profiles mp on mp.person_id = p.id
+       left join worship_line_identities li on li.person_id = p.id
+      order by name`,
     [weekId],
   );
   return rows;

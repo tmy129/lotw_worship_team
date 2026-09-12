@@ -1,6 +1,6 @@
 import type { Client } from "pg";
 import type { Env } from "../index";
-import { leadersAndAdmins, pushToMembers, servingMembers, type PushOutcome } from "./line";
+import { leadersAndAdmins, pushToMembers, servingMembers, songAnnouncementRecipients, type PushOutcome } from "./line";
 import { getSongs } from "./songs";
 import { getSchedule } from "./schedule";
 
@@ -10,7 +10,11 @@ const songLines = (songs: { name: string; youtube: string }[], fallback: string)
     return s.youtube ? `${line}\n   ${s.youtube}` : line;
   }).join("\n");
 
-/** Announces the week's song list to everyone serving that week. */
+/**
+ * Announces the week's song list to that week's roster and to the teams
+ * recorded as a song audience — the schedule alone would miss 影音組, who serve
+ * every service without appearing in it.
+ */
 export async function publishSongs(
   client: Client,
   params: Record<string, unknown>,
@@ -20,7 +24,7 @@ export async function publishSongs(
   if (!/^\d{4}-\d{2}-\d{2}$/.test(weekId)) throw new Error("weekId must be YYYY-MM-DD");
   const songs = await getSongs(client, { weekId });
   const text = `【詩歌公告】${weekId}\n\n本週詩歌如下：\n${songLines(songs, "（待定）")}\n\n感謝你的服事！`;
-  const outcome = await pushToMembers(env, await servingMembers(client, weekId), text);
+  const outcome = await pushToMembers(env, await songAnnouncementRecipients(client, weekId), text);
   return { published: true, ...outcome };
 }
 
