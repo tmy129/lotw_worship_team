@@ -39,9 +39,6 @@ export type PortalData = {
   weeks: PortalWeek[];
 };
 
-/** How many upcoming weeks the portal shows. A phone screen, not a planner. */
-const WEEK_WINDOW = 6;
-
 /**
  * Everything the portal shows, in one round trip.
  *
@@ -51,36 +48,32 @@ const WEEK_WINDOW = 6;
  * month boundary would have to work out which months to ask for and pay for two
  * requests on a mobile connection.
  *
- * `today` is the caller's Asia/Taipei date. It is a parameter rather than read
- * from the clock here so the window is deterministic and can be tested at a
- * chosen date; the worker passes the real one.
+ * Every week is returned, not a window: the page steps through months, and one
+ * response of a few tens of kilobytes is cheaper on a phone than a request per
+ * month. Past weeks are included because a past month's card still shows what
+ * that week held.
  */
 export async function getPortalData(
   client: Client,
   lineUserId: string,
-  today: string,
 ): Promise<PortalData> {
   const member = await portalMember(client, lineUserId);
 
   const [weekRows, mine] = await Promise.all([
     client.query(
-      `select to_char(id, 'YYYY-MM-DD') as "weekId"
-         from worship_weeks
-        where id >= $1::date
-        order by id
-        limit ${WEEK_WINDOW}`,
-      [today],
+      `select to_char(id, 'YYYY-MM-DD') as "weekId" from worship_weeks order by id`,
     ),
-    // A week already past is not news; the portal answers "when am I next on".
+    // Every assignment, past included: the card for a past week carries the
+    // roles that were held then, which is what makes a past month readable.
     member
       ? client.query(
           `select to_char(week_id, 'YYYY-MM-DD') as "weekId",
                   array_agg(role order by role) as roles
              from worship_schedule
-            where person_id = $1 and week_id >= $2::date
+            where person_id = $1
             group by week_id
             order by week_id`,
-          [member.id, today],
+          [member.id],
         )
       : Promise.resolve({ rows: [] as { weekId: string; roles: string[] }[] }),
   ]);

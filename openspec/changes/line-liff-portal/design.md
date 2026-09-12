@@ -49,9 +49,9 @@ A separate repository or a separate host was rejected: it would duplicate the de
 
 ### The portal reads through one action that returns everything it shows
 
-A single read action, `getPortalData`, takes the ID token and returns the viewer's display name, their upcoming assignments, and the upcoming weeks with their songs and speakers. The portal makes one request.
+A single read action, `getPortalData`, takes the ID token and returns the viewer's display name, their assignments, and every service week with its songs and speaker. The portal makes one request and navigates by month in the page, with no further round trips.
 
-Reusing `getMySchedule` and `getSongsForMonth` from the portal was rejected on two counts: `getMySchedule` takes a member id as a parameter, which is exactly the trust the ID-token decision removes, and a month-based song read would need the portal to work out which months the coming weeks fall in and issue two requests on a mobile connection.
+Reusing `getMySchedule` and `getSongsForMonth` from the portal was rejected on two counts: `getMySchedule` takes a member id as a parameter, which is exactly the trust the ID-token decision removes, and a month-keyed song read would make every change of month another two requests on a mobile connection — the full app pays that cost because it also writes; a reader need not. The whole year of weeks with their songs is a few tens of kilobytes, which is cheaper than one extra round trip on a phone.
 
 ### The portal shows only published songs
 
@@ -69,7 +69,9 @@ Naming the two people directly was rejected: the requirement is about a role in 
 
 **Out of scope:** any write path from the portal, any change to the management system's repository or tables, the rich menu and LIFF app registration in the LINE console, and the existing web app's own LINE Login flow.
 
-**Behavior.** A member of 敬拜部 opening the portal from LINE sees their own display name, every upcoming week they are assigned to with the roles they hold that week, and the coming weeks' published songs. A viewer with a worship binding but no upcoming assignments sees their name and a statement that they have nothing scheduled, alongside the songs. A viewer with no worship binding sees the songs and a statement that their LINE account is not linked, naming the full web app as the place to link it. No viewer sees an error screen merely for being unknown.
+**Behavior.** The portal presents one card per service week, in the visual language of the full app's 我的班表 screen, carrying that week's speaker, its published songs, and — when the viewer serves that week — the roles they hold, shown on the card itself rather than in a separate list. A month is shown at a time and can be stepped backwards and forwards; within a month the weeks still to come are listed before those already past, which are shown dimmed under a completed heading. A viewer with a worship binding and no roles simply sees cards without role marks. A viewer with no worship binding sees the same weeks and a statement that their LINE account is not linked, naming the full web app as the place to link it. No viewer sees an error screen merely for being unknown.
+
+One card holding the week's songs, its speaker and the viewer's own roles is the point: the question a rich menu answers is "what is happening on the 12th and am I on", which a schedule list above a song list makes the reader assemble for themselves.
 
 **Interface.** One new read action, `getPortalData`, accepts `idToken` and returns:
 
@@ -81,15 +83,15 @@ Naming the two people directly was rejected: the requirement is about a role in 
 }
 ```
 
-`weeks` covers service weeks from the current Asia/Taipei date forward, capped at six, ordered ascending. `songs` contains only confirmed rows. `mySchedule` is empty when `member` is null, and is restricted to weeks from the current date forward. The response travels in the Worker's existing `{ok, data}` envelope and the action is gated by the shared secret like every other action.
+`weeks` covers every service week, ordered ascending, so the page can step through months without asking again. `songs` contains only confirmed rows. `mySchedule` is empty when `member` is null, and covers every week that member is assigned to, past ones included, because a past month's card still shows what they did that week. The response travels in the Worker's existing `{ok, data}` envelope and the action is gated by the shared secret like every other action.
 
 **Failure modes.** An absent, malformed, expired, or wrong-channel ID token fails the action with an error envelope naming the token as the reason — it is not silently downgraded to an anonymous view, because that would hide a misconfigured channel behind a page that still renders. A valid token whose subject has no worship binding is not an error: it returns `member: null` with the songs still populated. A member without a binding is skipped by the song announcement and reported in the outcome, as recipients are skipped today.
 
 **Acceptance criteria.**
 
 - Calling `getPortalData` with a token minted for a different channel returns an error envelope naming the token, and issues no database query.
-- Calling it with a bound member's token returns that member and their future assignments only; a week in the past does not appear.
-- Calling it with an unbound account's token returns `member: null` and a non-empty `weeks`.
+- Calling it with a bound member's token returns that member and every week they are assigned to, with the roles of a multi-role week grouped into one entry.
+- Calling it with an unbound account's token returns `member: null` and a non-empty `weeks`, and the page renders that month's cards with no role marks.
 - A week holding one confirmed and one unconfirmed song returns only the confirmed one.
 - Publishing a song list for a week reaches both audio-visual members in addition to that week's roster, with anybody serving in that week and listed in an audience team receiving exactly one message.
 - The built `dist` contains both `index.html` and `liff.html`, and loading `liff.html` outside LINE reports that it must be opened from LINE rather than failing with an uncaught error.

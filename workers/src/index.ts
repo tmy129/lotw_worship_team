@@ -51,8 +51,7 @@ const READ_ACTIONS: Record<string, Handler> = {
   // cannot prove fails without touching the database at all.
   getPortalData: async (params, env) => {
     const lineUserId = await verifyLiffIdToken(params.idToken, env);
-    const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Taipei" });
-    return withDb(env, client => getPortalData(client, lineUserId, today));
+    return withDb(env, client => getPortalData(client, lineUserId));
   },
 
   getMySchedule: async (params, env) => withDb(env, c => getMySchedule(c, params)),

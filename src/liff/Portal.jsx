@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const API_URL = import.meta.env.VITE_GAS_URL;
 const APP_SECRET = import.meta.env.VITE_APP_SECRET || "";
@@ -8,13 +8,13 @@ const APP_SECRET = import.meta.env.VITE_APP_SECRET || "";
 const LIFF_ID = import.meta.env.VITE_LIFF_ID || "2009964527-ukdx60TQ";
 const WEB_APP_URL = "https://tmy129.github.io/lotw_worship_team/";
 
-const WEEKDAY = ["日", "一", "二", "三", "四", "五", "六"];
+const MONTH_ZH = ["", "一月", "二月", "三月", "四月", "五月", "六月",
+  "七月", "八月", "九月", "十月", "十一月", "十二月"];
 
-/** "2026-09-20" → "9/20（日）". Parsed as a local date, so the day never slips. */
-function fmtWeek(weekId) {
-  const [y, m, d] = weekId.split("-").map(Number);
-  const date = new Date(y, m - 1, d);
-  return `${m}/${d}（${WEEKDAY[date.getDay()]}）`;
+/** "2026-09-12" → "2026年9月12日", matching the full app's card heading. */
+function fullDate(weekId) {
+  const m = weekId.match(/(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[1]}年${parseInt(m[2], 10)}月${parseInt(m[3], 10)}日` : weekId;
 }
 
 /**
@@ -74,8 +74,59 @@ function openExternal(url) {
   else window.open(url, "_blank", "noopener");
 }
 
+/**
+ * One week, one card: the speaker, the songs, and — when the viewer serves that
+ * week — the roles they hold, marked on the week itself. A rich menu is asked
+ * "what is happening on the 12th and am I on", which a schedule list above a
+ * song list makes the reader assemble for themselves.
+ */
+function WeekCard({ weekId, speaker, songs, roles, past }) {
+  const serving = roles.length > 0;
+  return (
+    <div className={`wk${past ? " wk-past" : ""}`}>
+      <div className="wk-hd">
+        <div>
+          {serving && !past && <div className="wk-eyebrow">即將服事</div>}
+          <div className="wk-date">{fullDate(weekId)}</div>
+        </div>
+        {serving && (
+          <div className="wk-chips">
+            {roles.map(r => <span key={r} className="chip chip-gold">{r}</span>)}
+          </div>
+        )}
+      </div>
+      <div className="wk-bd">
+        {speaker && (
+          <div className="wk-speaker">
+            <span aria-hidden="true">🙏</span>
+            <span>講員：<strong>{speaker}</strong></span>
+          </div>
+        )}
+        <div className="wk-label">本週詩歌</div>
+        {songs.length ? (
+          songs.map(s => (
+            <div key={s.slot} className="song">
+              <span className="song-name">{s.name}</span>
+              {s.youtube && (
+                <button type="button" className="yt" onClick={() => openExternal(s.youtube)}>
+                  YouTube
+                </button>
+              )}
+            </div>
+          ))
+        ) : (
+          <div className="song-none">尚未公佈</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function Portal() {
   const [state, setState] = useState({ status: "loading" });
+  // null until the viewer steps months; the shown month is derived, not stored,
+  // so arriving data cannot trigger a second render to pick a default.
+  const [chosenMonth, setChosenMonth] = useState(null);
 
   useEffect(() => {
     let alive = true;
@@ -93,12 +144,25 @@ export default function Portal() {
     return () => { alive = false; };
   }, []);
 
+  const weeks = state.data?.weeks;
+  const months = useMemo(
+    () => [...new Set((weeks ?? []).map(w => w.weekId.slice(0, 7)))],
+    [weeks],
+  );
+
+  // Opens on the current month, or the nearest one the calendar actually has.
+  const month = chosenMonth ?? (() => {
+    if (!months.length) return "";
+    const now = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Taipei" }).slice(0, 7);
+    return months.find(m => m >= now) ?? months[months.length - 1];
+  })();
+
   if (state.status === "loading") {
     return (
       <main className="portal">
-        <div className="skeleton-title" />
-        <div className="skeleton-card" />
-        <div className="skeleton-card" />
+        <div className="sk-title" />
+        <div className="sk-card" />
+        <div className="sk-card" />
       </main>
     );
   }
@@ -117,76 +181,60 @@ export default function Portal() {
     );
   }
 
-  const { member, mySchedule, weeks } = state.data;
+  const { member, mySchedule } = state.data;
   const rolesByWeek = new Map(mySchedule.map(m => [m.weekId, m.roles]));
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Taipei" });
+  const monthWeeks = (weeks ?? []).filter(w => w.weekId.startsWith(month));
+  const ahead = monthWeeks.filter(w => w.weekId >= today);
+  const done = monthWeeks.filter(w => w.weekId < today);
+  // Stepped from the previous value rather than from this render's index, so two
+  // quick taps move two months instead of colliding on one stale index.
+  const step = delta => setChosenMonth(prev => {
+    const i = months.indexOf(prev ?? month);
+    return months[i + delta] ?? months[i] ?? month;
+  });
+  const idx = months.indexOf(month);
+
+  const card = (w, past) => (
+    <WeekCard key={w.weekId} weekId={w.weekId} speaker={w.speaker} songs={w.songs}
+      roles={rolesByWeek.get(w.weekId) ?? []} past={past} />
+  );
 
   return (
     <main className="portal">
       <header className="portal-head">
         <h1 className="portal-title">我的班表</h1>
-        {member ? <p className="portal-who">{member.name}</p> : null}
+        <div className="month-nav">
+          <button type="button" className="step" disabled={idx <= 0}
+            onClick={() => step(-1)} aria-label="上個月">‹</button>
+          <span className="month-label">{MONTH_ZH[parseInt(month.slice(5, 7), 10)] || month}</span>
+          <button type="button" className="step" disabled={idx >= months.length - 1}
+            onClick={() => step(1)} aria-label="下個月">›</button>
+        </div>
       </header>
 
-      {member ? (
-        mySchedule.length ? (
-          <section className="block">
-            <h2 className="block-title">接下來的服事</h2>
-            <ul className="mine">
-              {mySchedule.map(m => (
-                <li key={m.weekId}>
-                  <span className="mine-week">{fmtWeek(m.weekId)}</span>
-                  <span className="mine-roles">{m.roles.join("、")}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : (
-          <section className="block">
-            <p className="empty">目前沒有排到你的服事。</p>
-          </section>
-        )
-      ) : (
-        <section className="block">
-          <p className="empty">
-            這個 LINE 帳號還沒有連結到團員資料，所以看不到個人班表。
-          </p>
+      {member ? null : (
+        <div className="notice notice-inline">
+          <p>這個 LINE 帳號還沒有連結到團員資料，所以看不到個人服事標記。</p>
           <button type="button" className="link-btn" onClick={() => openExternal(WEB_APP_URL)}>
             前往網頁版連結帳號
           </button>
-        </section>
+        </div>
       )}
 
-      <section className="block">
-        <h2 className="block-title">近期詩歌</h2>
-        {weeks.map(w => (
-          <article key={w.weekId} className="week">
-            <div className="week-head">
-              <span className="week-date">{fmtWeek(w.weekId)}</span>
-              {rolesByWeek.has(w.weekId) && (
-                <span className="week-badge">{rolesByWeek.get(w.weekId).join("、")}</span>
-              )}
-            </div>
-            {w.speaker ? <p className="week-speaker">講員：{w.speaker}</p> : null}
-            {w.songs.length ? (
-              <ol className="songs">
-                {w.songs.map(s => (
-                  <li key={s.slot}>
-                    {s.youtube ? (
-                      <button type="button" className="song-link" onClick={() => openExternal(s.youtube)}>
-                        {s.name}
-                      </button>
-                    ) : (
-                      <span>{s.name}</span>
-                    )}
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <p className="week-pending">詩歌尚未公告</p>
-            )}
-          </article>
-        ))}
-      </section>
+      {monthWeeks.length === 0 ? (
+        <div className="empty">本月沒有排班資料</div>
+      ) : (
+        <>
+          {ahead.map(w => card(w, false))}
+          {done.length > 0 && (
+            <>
+              {ahead.length > 0 && <div className="done-label">已完成</div>}
+              {done.map(w => card(w, true))}
+            </>
+          )}
+        </>
+      )}
 
       <footer className="portal-foot">
         <p>這裡只顯示資訊。投票、選歌與排班請到網頁版。</p>

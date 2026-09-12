@@ -23,25 +23,36 @@ The portal SHALL identify its viewer only from a LIFF ID token verified by LINE 
 
 ### Requirement: The portal reports a person's future assignments
 
-The portal SHALL present every upcoming service week the viewer is assigned to, with the roles they hold in that week. Weeks earlier than the current Asia/Taipei date SHALL NOT be presented.
+The portal SHALL present one card per service week carrying that week's speaker, its published songs, and the roles the viewer holds that week. Roles SHALL be shown on the week they belong to rather than in a separate list. One month SHALL be shown at a time and SHALL be steppable backwards and forwards; within a month, weeks still to come SHALL be listed before weeks already past, and past weeks SHALL be marked as completed.
 
-#### Scenario: An assigned member sees their weeks and roles
+#### Scenario: A week the viewer serves is marked on its own card
 
-- **WHEN** a bound member with future assignments opens the portal
-- **THEN** each of those weeks is listed with the roles that member holds that week
+- **WHEN** a bound member opens the portal on a month in which they serve
+- **THEN** that week's card carries the roles they hold that week, alongside that week's speaker and songs
 
-##### Example: past weeks excluded, roles grouped
+##### Example: roles land on the right card
 
-- **GIVEN** the current Asia/Taipei date is 2026-09-11
-- **AND** the member is assigned 主領 on 2026-09-06, and both 主領 and PPT on 2026-09-20
-- **WHEN** the portal read action runs for that member
-- **THEN** mySchedule contains exactly one entry, for 2026-09-20, holding the roles 主領 and PPT
+- **GIVEN** the member is assigned 練前預備 and 鋼琴 on 2026-09-12, and nothing on 2026-09-19
+- **WHEN** the portal shows 九月
+- **THEN** the 2026-09-12 card carries both roles and the 2026-09-19 card carries none
+- **AND** both cards still show their own speaker and songs
 
-#### Scenario: A bound member with nothing scheduled is told so
+#### Scenario: A month separates what is ahead from what is done
 
-- **WHEN** a bound member with no future assignments opens the portal
-- **THEN** the portal names them and states that they have no upcoming assignments
-- **AND** the songs are still presented
+- **WHEN** the shown month contains weeks both before and after today
+- **THEN** the weeks still to come are listed first
+- **AND** the weeks already past follow under a completed heading, visually subdued
+
+#### Scenario: A bound member who serves nowhere still reads the month
+
+- **WHEN** a bound member with no assignments at all opens the portal
+- **THEN** the month's cards are shown with no role marks
+- **AND** they are not told their account is unlinked
+
+#### Scenario: Changing month costs no further request
+
+- **WHEN** the viewer steps to another month
+- **THEN** that month's cards are shown without issuing another request
 
 ### Requirement: The portal serves viewers who have no worship binding
 
@@ -55,12 +66,12 @@ A viewer whose verified LINE account holds no worship binding SHALL be served th
 #### Scenario: An audio-visual member reads the songs without a schedule
 
 - **WHEN** a member of 影音組 who holds a worship binding opens the portal
-- **THEN** the songs are presented
-- **AND** no assignments are listed, because that person is not on the worship roster
+- **THEN** the weeks and their songs are presented
+- **AND** no card carries a role mark, because that person is not on the worship roster
 
 ### Requirement: The portal presents only published songs
 
-The portal SHALL present only songs marked confirmed. A week whose songs are absent or unconfirmed SHALL be presented as awaiting announcement rather than omitted from the list of weeks.
+The portal SHALL present only songs marked confirmed. A week whose songs are absent or unconfirmed SHALL keep its card, marked as not yet announced, rather than being omitted from the month.
 
 #### Scenario: An unconfirmed submission stays out of the portal
 
