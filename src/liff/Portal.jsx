@@ -2,7 +2,10 @@ import { useEffect, useState } from "react";
 
 const API_URL = import.meta.env.VITE_GAS_URL;
 const APP_SECRET = import.meta.env.VITE_APP_SECRET || "";
-const LIFF_ID = import.meta.env.VITE_LIFF_ID || "";
+// Public by construction — it is visible in this page's own source, like the
+// channel id the web app carries. Committed as the default so a fresh clone
+// builds a working portal; VITE_LIFF_ID overrides it for a second LIFF app.
+const LIFF_ID = import.meta.env.VITE_LIFF_ID || "2009964527-ukdx60TQ";
 const WEB_APP_URL = "https://tmy129.github.io/lotw_worship_team/";
 
 const WEEKDAY = ["日", "一", "二", "三", "四", "五", "六"];

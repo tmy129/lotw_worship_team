@@ -28,7 +28,7 @@ passes all three to `npm run build`; `.env.local` holds them for local builds.
 | ------------------ | ----------------------------------------------------------------------- |
 | `VITE_GAS_URL`     | The deployed Worker's URL (`wrangler deploy` prints it)                  |
 | `VITE_APP_SECRET`  | Must equal the Worker's `APP_SECRET` secret                              |
-| `VITE_LIFF_ID`     | The LIFF app id from the LINE Developers console (see below)             |
+| `VITE_LIFF_ID`     | Optional. The portal's LIFF id is committed as a default; set this only to point a build at a different LIFF app |
 
 None of these are secret in the cryptographic sense — they are compiled into a
 public page. The shared secret gates the API against casual traffic; what protects
@@ -51,7 +51,8 @@ To set it up in the LINE Developers console:
 2. Endpoint URL: `https://tmy129.github.io/lotw_worship_team/liff.html`
 3. Size: Full. Scopes: **`profile` and `openid`** — without `openid` LINE issues no
    ID token and the portal will report that it cannot identify the viewer.
-4. Copy the issued LIFF id into `VITE_LIFF_ID` and re-run the Pages workflow.
+4. The issued LIFF id is `2009964527-ukdx60TQ`, already committed as the default
+   in `src/liff/Portal.jsx`. Replacing the LIFF app means changing it there.
 5. In the worship official account's rich menu, point an entry at the LIFF URL
    the console shows (`https://liff.line.me/<VITE_LIFF_ID>`).
 
