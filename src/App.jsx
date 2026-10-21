@@ -1178,11 +1178,11 @@ function VoteView({ voteSettings, currentUser, weeks, showToast, api }) {
   const [saving, setSaving]                 = useState(false);
   const [loadingVotes, setLoadingVotes]     = useState(false);
 
-  // Show all settings (open + closed), default to first open one
-  const allSettings = voteSettings;
+  // Show all settings, open ones first, each group newest first; default to first open one
+  const settingClosed = s => s.status === "closed" || (s.deadline && new Date(s.deadline) < new Date());
+  const allSettings = [...voteSettings].reverse().sort((a, b) => settingClosed(a) - settingClosed(b));
   useEffect(() => {
-    const firstOpenIdx = allSettings.findIndex(s => s.status === "open");
-    setActiveSettingIdx(firstOpenIdx >= 0 ? firstOpenIdx : 0);
+    setActiveSettingIdx(0);
   }, [voteSettings.length]);
 
   const activeSetting = allSettings[activeSettingIdx];
