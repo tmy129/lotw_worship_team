@@ -28,13 +28,11 @@ export async function getWeeks(client: Client): Promise<Week[]> {
 }
 
 export async function getWeeksByMonths(client: Client, monthsParam: unknown): Promise<Week[]> {
-  const months = String(monthsParam ?? "")
-    .split(",")
-    .map(Number)
-    .filter(n => Number.isInteger(n) && n >= 1 && n <= 12);
+  const { monthList } = await import("./votes");
+  const months = monthList(monthsParam);
   if (!months.length) return [];
   const { rows } = await client.query(
-    `${SELECT} where extract(month from id)::int = any($1::int[]) order by id`,
+    `${SELECT} where to_char(id, 'YYYY-MM') = any($1::text[]) order by id`,
     [months],
   );
   return rows.map(toWeek);

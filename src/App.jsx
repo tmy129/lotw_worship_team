@@ -52,6 +52,10 @@ async function api(action, params = {}, body = null) {
 }
 
 const MONTH_NAMES = ['','1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+// Vote periods are 'YYYY-MM' strings; a bare month number cannot tell 2026/01 from 2027/01.
+const ymLabel = ym => { const [y, m] = String(ym).split("-"); return `${y}年${+m}月`; };
+const ymLabels = yms => (yms || []).map(ymLabel).join("、");
+const inMonths = (w, yms) => (yms || []).includes(String(w.id).slice(0, 7));
 
 const ROLES_MAP = {
   admin:  { label:"管理員", cls:"rp-admin" },
@@ -822,8 +826,11 @@ function VoteAdminView({ voteSettings, setVoteSettings, currentUser, showToast, 
   const [summaryMonths, setSummaryMonths] = useState(null);
   const [batchTarget, setBatchTarget]   = useState(null);
 
-  const allMonths = Array.from({ length:12 }, (_,i) => i+1);
-  const toggleMonth = m => setSelectedMonths(prev => prev.includes(m) ? prev.filter(x=>x!==m) : [...prev,m].sort((a,b)=>a-b));
+  const allMonths = Array.from({ length:12 }, (_,i) => {
+    const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() + i);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+  });
+  const toggleMonth = m => setSelectedMonths(prev => prev.includes(m) ? prev.filter(x=>x!==m) : [...prev,m].sort());
 
   const openVote = async () => {
     if (!selectedMonths.length) return showToast("請至少選一個月份", "error");
@@ -832,7 +839,7 @@ function VoteAdminView({ voteSettings, setVoteSettings, currentUser, showToast, 
     const updated = await api("getVoteSettings");
     setVoteSettings(updated);
     setShowForm(false); setSelectedMonths([]); setDeadline(""); setNote("");
-    showToast(`已開啟 ${selectedMonths.map(m=>MONTH_NAMES[m]).join("、")} 的投票！`);
+    showToast(`已開啟 ${ymLabels(selectedMonths)} 的投票！`);
   };
 
   const closeVote = async id => {
@@ -882,7 +889,8 @@ function VoteAdminView({ voteSettings, setVoteSettings, currentUser, showToast, 
               <div className="mpick">
                 {allMonths.map(m => (
                   <button key={m} className={`mpick-btn${selectedMonths.includes(m)?" on":""}`} onClick={() => toggleMonth(m)}>
-                    {MONTH_NAMES[m]}
+                    <div style={{ fontSize:10, opacity:0.7 }}>{m.slice(0,4)}</div>
+                    {MONTH_NAMES[+m.slice(5)]}
                   </button>
                 ))}
               </div>
@@ -911,8 +919,8 @@ function VoteAdminView({ voteSettings, setVoteSettings, currentUser, showToast, 
         voteSettings.map(setting => {
           const expired   = isExpired(setting);
           const isClosed  = setting.status === "closed";
-          const monthNames = (setting.months||[]).map(m=>MONTH_NAMES[m]).join("、");
-          const weeksCount = weeks.filter(w=>{ const match=String(w.id).match(/\d{4}-(\d+)-/); return match&&(setting.months||[]).includes(+match[1]); }).length;
+          const monthNames = ymLabels(setting.months);
+          const weeksCount = weeks.filter(w => inMonths(w, setting.months)).length;
 
           return (
             <div className="vs-card" key={setting.id}>
@@ -952,7 +960,7 @@ function VoteAdminView({ voteSettings, setVoteSettings, currentUser, showToast, 
         <div style={{ padding:"0 16px 16px" }}>
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
             <div style={{ fontFamily:"var(--serif)", fontSize:16, color:"var(--navy)" }}>
-              {summaryMonths?.map(m=>MONTH_NAMES[m]).join("、")} 投票統計
+              {ymLabels(summaryMonths)} 投票統計
             </div>
             <button className="btn btn-sm btn-ghost btn-pill" onClick={() => setSummaryData(null)}>關閉</button>
           </div>
@@ -974,10 +982,7 @@ function BatchSchedulePanel({ setting, weeks, members, api, showToast, onClose, 
   const [previewPrompt, setPreviewPrompt] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
-  const settingWeeks = weeks.filter(w => {
-    const m = String(w.id).match(/\d{4}-(\d+)-/);
-    return m && setting.months.includes(+m[1]);
-  });
+  const settingWeeks = weeks.filter(w => inMonths(w, setting.months));
 
   const run = async () => {
     setRunning(true);
@@ -1050,7 +1055,7 @@ function BatchSchedulePanel({ setting, weeks, members, api, showToast, onClose, 
     <div style={{ marginTop:16, padding:"16px", background:"var(--cream-md)", borderRadius:"var(--r-md)", border:"1px solid var(--border)" }}>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
         <div style={{ fontFamily:"var(--serif)", fontSize:15, color:"var(--navy)" }}>
-          全期 AI 排班 — {setting.months.map(m=>MONTH_NAMES[m]).join("、")}（{settingWeeks.length} 週）
+          全期 AI 排班 — {ymLabels(setting.months)}（{settingWeeks.length} 週）
         </div>
         <button className="btn btn-sm btn-ghost btn-pill" onClick={onClose} disabled={running}>關閉</button>
       </div>
@@ -1184,13 +1189,12 @@ function VoteView({ voteSettings, currentUser, weeks, showToast, api }) {
   const isClosed = activeSetting && (activeSetting.status === "closed" || (activeSetting.deadline && new Date(activeSetting.deadline) < new Date()));
 
   const settingWeeks = activeSetting
-    ? weeks.filter(w => { const m = String(w.id).match(/\d{4}-(\d+)-/); return m && activeSetting.months.includes(+m[1]); })
+    ? weeks.filter(w => inMonths(w, activeSetting.months))
     : [];
 
   const weeksByMonth = {};
   settingWeeks.forEach(w => {
-    const m = String(w.id).match(/\d{4}-(\d+)-/);
-    const month = m ? +m[1] : 0;
+    const month = String(w.id).slice(0, 7);
     if (!weeksByMonth[month]) weeksByMonth[month] = [];
     weeksByMonth[month].push(w);
   });
@@ -1255,7 +1259,7 @@ function VoteView({ voteSettings, currentUser, weeks, showToast, api }) {
             const closed = s.status === "closed" || (s.deadline && new Date(s.deadline) < new Date());
             return (
               <button key={s.id} className={`wpill${activeSettingIdx===i?" on":""}`} onClick={() => setActiveSettingIdx(i)}>
-                {s.months.map(m=>MONTH_NAMES[m]).join("、")}
+                {ymLabels(s.months)}
                 {closed && <span style={{ marginLeft:4, fontSize:10, opacity:0.7 }}>已結束</span>}
               </button>
             );
@@ -1295,7 +1299,7 @@ function VoteView({ voteSettings, currentUser, weeks, showToast, api }) {
         {Object.entries(weeksByMonth).map(([month, monthWeeks]) => (
         <div key={month}>
           <div className="mdiv" style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-            <span>{MONTH_NAMES[+month]}</span>
+            <span>{ymLabel(month)}</span>
             {!isClosed && (
               <div style={{ display:"flex", gap:6 }}>
                 <button className="btn btn-sm btn-ok btn-pill" onClick={() => bulkMonth(monthWeeks,"yes")}>全月可以</button>
@@ -1464,10 +1468,7 @@ function ScheduleView({ weeks, members, voteSettings, currentUser, showToast, ap
     s.status === "closed" || (s.deadline && new Date(s.deadline) < new Date())
   );
 
-  const getSettingWeeks = s => weeks.filter(w => {
-    const m = String(w.id).match(/\d{4}-(\d+)-/);
-    return m && s.months.includes(+m[1]);
-  });
+  const getSettingWeeks = s => weeks.filter(w => inMonths(w, s.months));
 
   const normSummary = raw => {
     if (!raw?.summary) return raw;
@@ -1624,7 +1625,7 @@ function ScheduleView({ weeks, members, voteSettings, currentUser, showToast, ap
         {closedSettings.length === 0 ? (
           <div style={{ fontSize:13, color:"var(--text-3)" }}>尚無已結束的投票可供排班</div>
         ) : closedSettings.map(s => {
-          const monthNames = (s.months||[]).map(m => MONTH_NAMES[m]).join("、");
+          const monthNames = ymLabels(s.months);
           const wkCount = getSettingWeeks(s).length;
           return (
             <button key={s.id}
@@ -1656,7 +1657,7 @@ function ScheduleView({ weeks, members, voteSettings, currentUser, showToast, ap
           {/* AI controls — hide when viewing draft */}
           {!isDraft && (
             <div className="ai-card">
-              <div className="ai-title">{batchSetting.months.map(m=>MONTH_NAMES[m]).join("、")} 全期排班</div>
+              <div className="ai-title">{ymLabels(batchSetting.months)} 全期排班</div>
               <div className="ai-sub">{weekRows.length} 週 ｜ 預計需要 30–60 秒</div>
               <input className="inp" style={{ marginBottom:10 }} value={aiNote}
                 onChange={e => setAiNote(e.target.value)} placeholder="備注給 AI（選填）" />
@@ -1679,7 +1680,7 @@ function ScheduleView({ weeks, members, voteSettings, currentUser, showToast, ap
               onUpdateSpeaker={updateSpeaker} onUpdatePrePractice={updatePrePractice}
               dirtyWeeks={dirtyWeeks} saving={saving} onSave={saveChanges}
               onSendCalendar={sendCalendar}
-              monthLabel={batchSetting.months.map(m => MONTH_NAMES[m]).join("、")} />
+              monthLabel={ymLabels(batchSetting.months)} />
           )}
         </>
       )}

@@ -2,7 +2,7 @@ import type { Client } from "pg";
 
 export type VoteSetting = {
   id: string;
-  months: number[];
+  months: string[];
   deadline: string;
   openedAt: string;
   openedBy: string;
@@ -19,6 +19,10 @@ const toSetting = (row: Record<string, any>): VoteSetting => ({
   status: row.status ?? "open",
   note: row.note ?? "",
 });
+
+/** 'YYYY-MM' entries from a comma list; bare month numbers name no year and are dropped. */
+export const monthList = (monthsParam: unknown): string[] =>
+  String(monthsParam ?? "").split(",").map(m => m.trim()).filter(m => /^\d{4}-(0[1-9]|1[0-2])$/.test(m));
 
 const SELECT_SETTINGS = `select id, months, to_char(deadline, 'YYYY-MM-DD') as deadline,
                                 opened_at, opened_by, status, note
@@ -37,9 +41,10 @@ export async function saveVoteSetting(
   client: Client,
   params: Record<string, unknown>,
 ): Promise<{ created?: boolean; updated?: boolean; id: string }> {
-  const months = Array.isArray(params.months)
-    ? params.months.map(Number).filter(Number.isInteger)
-    : String(params.months ?? "").split(",").map(Number).filter(Number.isInteger);
+  // Closing a vote sends only id + status; absent fields keep their stored value.
+  const months = params.months === undefined
+    ? null
+    : monthList(Array.isArray(params.months) ? params.months.join(",") : params.months);
   const deadline = params.deadline ? String(params.deadline) : null;
   const note = params.note == null ? null : String(params.note);
   const id = typeof params.id === "string" && params.id ? params.id : null;
@@ -47,7 +52,7 @@ export async function saveVoteSetting(
   if (id) {
     const { rowCount } = await client.query(
       `update worship_vote_settings
-          set months = $2, deadline = $3::date,
+          set months = coalesce($2, months), deadline = coalesce($3::date, deadline),
               status = coalesce($4, status), note = coalesce($5, note)
         where id = $1`,
       [id, months, deadline, params.status ? String(params.status) : null, note],
@@ -59,7 +64,7 @@ export async function saveVoteSetting(
   await client.query(
     `insert into worship_vote_settings (id, months, deadline, opened_at, opened_by, status, note)
      values ($1, $2, $3::date, now(), $4, 'open', $5)`,
-    [newId, months, deadline, params.openedBy ? String(params.openedBy) : null, note],
+    [newId, months ?? [], deadline, params.openedBy ? String(params.openedBy) : null, note],
   );
   return { created: true, id: newId };
 }
@@ -83,9 +88,6 @@ const SELECT_VOTES = `select to_char(week_id, 'YYYY-MM-DD') as "weekId",
 
 const isPersonId = (v: unknown): v is string => typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v);
 
-const monthList = (monthsParam: unknown): number[] =>
-  String(monthsParam ?? "").split(",").map(Number).filter(n => Number.isInteger(n) && n >= 1 && n <= 12);
-
 export async function getVotes(client: Client, params: Record<string, unknown>): Promise<Vote[]> {
   const weekId = String(params.weekId ?? "").trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(weekId)) return [];
@@ -103,7 +105,7 @@ export async function getVotesByMember(client: Client, params: Record<string, un
   const wheres: string[] = [];
   const values: unknown[] = [];
   if (isPersonId(memberId)) { values.push(memberId); wheres.push(`person_id = $${values.length}`); }
-  if (months.length) { values.push(months); wheres.push(`extract(month from week_id)::int = any($${values.length}::int[])`); }
+  if (months.length) { values.push(months); wheres.push(`to_char(week_id, 'YYYY-MM') = any($${values.length}::text[])`); }
   const { rows } = await client.query(
     `${SELECT_VOTES}${wheres.length ? " where " + wheres.join(" and ") : ""}`,
     values,
@@ -125,7 +127,7 @@ export async function getVoteSummary(
   for (const w of weeks) summary[w.id] = {};
 
   const { rows } = await client.query(
-    `${SELECT_VOTES} where extract(month from week_id)::int = any($1::int[])`,
+    `${SELECT_VOTES} where to_char(week_id, 'YYYY-MM') = any($1::text[])`,
     [months],
   );
   for (const r of rows) if (summary[r.weekId]) summary[r.weekId][r.memberId] = r.vote;
